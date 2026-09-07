@@ -1,0 +1,14 @@
+---
+// The product placement in the customer portal's dashboard.
+//
+// Unlike the other widgets in this package this one is UNGATED — it is shown to
+// customers, so a `shop:*` permission would hide it from exactly the audience
+// it exists for (see the manifest). It reads a public placement endpoint and
+// touches no admin route.
+import PicksBody from "../islands/PicksBody.tsx";
+---
+
+<article class="tds-widget">
+  <h3 class="tds-widget__title">Empfehlungen</h3>
+  <PicksBody client:visible />
+</article>

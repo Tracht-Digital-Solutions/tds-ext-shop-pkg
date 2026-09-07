@@ -1,0 +1,13 @@
+---
+// Advertising slots: where products appear in the journal, the customer portal
+// and the shop itself. One screen for all three, because a slot is one concept
+// wherever it renders.
+import PlacementManager from "../islands/PlacementManager.tsx";
+---
+
+<section class="tds-page">
+  <div class="tds-page__head">
+    <h1 class="tds-page__title">Platzierungen</h1>
+  </div>
+  <PlacementManager client:load />
+</section>

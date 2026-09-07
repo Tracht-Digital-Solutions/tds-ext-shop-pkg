@@ -1,0 +1,16 @@
+---
+// TDShop dashboard widget shell (server component). Renders the card chrome and
+// embeds the hydrated island; the Dashboard host mounts it via
+// virtual:frontend-widgets.
+import WidgetBody from "../islands/WidgetBody.tsx";
+// HYDRATION: `client:visible`, not `client:load`. The dashboard renders more
+// than a dozen widgets; eager hydration meant a React root AND a fetch for
+// every one on each dashboard load — including the ones the user had switched
+// off in their layout, which are display:none, so IntersectionObserver never
+// fires for them at all. Do not change this back without measuring again.
+---
+
+<article class="tds-widget">
+  <h3 class="tds-widget__title">TDShop</h3>
+  <WidgetBody client:visible />
+</article>

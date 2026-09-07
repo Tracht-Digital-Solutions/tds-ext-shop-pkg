@@ -1,0 +1,12 @@
+---
+// The TDShop catalogue screen, injected into the host build via the manifest's
+// route slot.
+import ProductList from "../islands/ProductList.tsx";
+---
+
+<section class="tds-page">
+  <div class="tds-page__head">
+    <h1 class="tds-page__title">TDShop</h1>
+  </div>
+  <ProductList client:load />
+</section>
