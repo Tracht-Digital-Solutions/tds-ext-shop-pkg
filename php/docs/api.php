@@ -250,6 +250,76 @@ return [
             ['status' => 404, 'description' => 'Kein aktiver Werbeplatz unter diesem Schlüssel.'],
         ],
     ],
+    /* --- Angebotsabgleich -------------------------------------------------- */
+    [
+        'method' => 'GET',
+        'pattern' => '/shop/sync/status',
+        'summary' => 'Zustand des Amazon-Abgleichs',
+        'description' => '`revoked: true` heisst, Amazon hat den API-Zugang entzogen — das '
+            . 'passiert, wenn qualifizierte Verkaeufe ausbleiben, und ist ein Zustand, den ein '
+            . 'Mensch aufloesen muss, kein Fehler zum Wiederholen. Der Katalog laeuft weiter: '
+            . 'die Affiliate-Links sind nicht die API, nur die Preise verschwinden binnen eines '
+            . 'Tages von selbst.',
+        'auth' => 'permission',
+        'permission' => 'shop:sync',
+        'tag' => 'Abgleich',
+        'responses' => [['status' => 200, 'description' => '`{queue, revoked, lastRun, configured}`']],
+    ],
+    [
+        'method' => 'POST',
+        'pattern' => '/shop/sync/enqueue',
+        'summary' => 'Abgleich jetzt anstossen',
+        'description' => 'Setzt einen gestoppten Abgleich fort, stellt veraltete Angebote in die '
+            . 'Warteschlange und laeuft sofort einen Takt. Bewusst EIN Knopf: wer gerade sein '
+            . 'Amazon-Konto in Ordnung gebracht hat, will beides — zwei Knoepfe laden dazu ein, '
+            . 'nur den ersten zu druecken und den Abgleich fuer kaputt zu halten.',
+        'auth' => 'permission',
+        'permission' => 'shop:sync',
+        'tag' => 'Abgleich',
+        'responses' => [['status' => 200, 'description' => '`{resumed, queued, ok, failed, calls, stopped}`']],
+    ],
+    [
+        'method' => 'POST',
+        'pattern' => '/shop/sync/tick',
+        'summary' => 'Externer Anstoss (tokengeschuetzt)',
+        'description' => 'Fuer einen beliebigen externen Zeitgeber — Uptime-Monitor, '
+            . 'GitHub-Actions-`schedule`, Plesk-Aufgabe falls vorhanden. Ausdruecklich KEINE '
+            . 'Betriebsvoraussetzung: der anfragegetriebene Takt haelt den Katalog aktuell, dies '
+            . 'beschleunigt ihn nur. Ohne `SHOP_SYNC_TOKEN` antwortet die Route 503, statt '
+            . 'unauthentifiziert zu laufen.',
+        'auth' => 'token',
+        'tag' => 'Abgleich',
+        'params' => [
+            ['name' => 'X-TDS-Sync-Token', 'in' => 'header', 'description' => 'Muss `SHOP_SYNC_TOKEN` entsprechen.'],
+        ],
+        'responses' => [
+            ['status' => 200, 'description' => '`{ok, failed, calls, stopped}`'],
+            ['status' => 401, 'description' => 'Token fehlt oder stimmt nicht.'],
+            ['status' => 503, 'description' => 'Auf dem Host ist kein Token gesetzt.'],
+        ],
+    ],
+    [
+        'method' => 'POST',
+        'pattern' => '/shop/affiliate/lookup',
+        'summary' => 'Amazon-Produkt nachschlagen (ASIN oder Suchbegriff)',
+        'description' => 'Fuer den Import im Panel. Fehler werden hier NICHT geschluckt — der '
+            . 'Betreiber steht davor, und ein entzogener Zugang liest sich voellig anders als '
+            . 'ein Tippfehler in einer ASIN.',
+        'auth' => 'permission',
+        'permission' => 'shop:write',
+        'tag' => 'Abgleich',
+        'params' => [
+            ['name' => 'asin', 'in' => 'body', 'description' => 'Eine ASIN. Schlaegt `keywords`.'],
+            ['name' => 'keywords', 'in' => 'body', 'description' => 'Alternativ: Suchbegriff.'],
+        ],
+        'responses' => [
+            ['status' => 200, 'description' => '`{items: [...]}`'],
+            ['status' => 422, 'description' => 'Weder ASIN noch Suchbegriff.'],
+            ['status' => 502, 'description' => 'Dauerhafter Fehler — Zugangsdaten oder entzogener Zugang.'],
+            ['status' => 503, 'description' => 'Amazon nicht konfiguriert oder voruebergehend nicht erreichbar.'],
+        ],
+    ],
+
     [
         'method' => 'GET',
         'pattern' => '/shop/clicks',

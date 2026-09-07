@@ -11,23 +11,38 @@ use Slim\App;
 use Tds\Ext\Shop\Domain\ClickRepository;
 use Tds\Ext\Shop\Domain\PlacementRepository;
 use Tds\Ext\Shop\Domain\ProductRepository;
+use Tds\Ext\Shop\Domain\SyncQueueRepository;
+use Tds\Ext\Shop\Service\AmazonPaApiClient;
+use Tds\Ext\Shop\Service\OfferSync;
+use Tds\Ext\Shop\Service\PaApiException;
+use Tds\Ext\Shop\Support\PaApiSigner;
+use Tds\Ext\Shop\Support\SyncTicker;
 use Tds\Frontend\Contract\AbstractModule;
 use Tds\Frontend\Contract\ApiDocSource;
 use Tds\Frontend\Contract\PermissionDef;
+use Tds\Frontend\Contract\SettingsStore;
 use Tds\Frontend\Contract\SiteKeyProtected;
 use Tds\Frontend\Contract\UserContext;
 
 /**
- * TDShop backend — checkpoint 1: the catalogue, the placements that embed it
- * elsewhere, and the click counter.
+ * TDShop backend: the catalogue, the placements that embed it elsewhere, the
+ * click counter, and the Amazon offer sync.
  *
- * The Amazon Product Advertising sync and the Stripe checkout are separate
- * checkpoints; nothing here depends on either, so the catalogue is useful (and
- * the shop site is deployable) before they exist.
+ * The Stripe checkout is a separate checkpoint; nothing here depends on it.
+ *
+ * The sync is optional by construction — without Amazon credentials the client
+ * is null, `OfferSync::isConfigured()` is false, and the catalogue works
+ * exactly as before with prices that were entered by hand or not at all. That
+ * matters more than it sounds: Amazon withdraws API access when qualifying
+ * sales stop, so "no sync" is a state this shop has to survive, not an
+ * installation step it is waiting on.
  */
 final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyProtected
 {
     private const LANGS = ['de', 'en'];
+
+    /** Settings namespace. Per-extension, so keys cannot collide in the shared store. */
+    private const SETTINGS_NS = 'shop';
 
     public function id(): string
     {
@@ -75,9 +90,88 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
         });
         $c?->set(PlacementRepository::class, static fn ($c) => new PlacementRepository($c->get(PDO::class)));
         $c?->set(ClickRepository::class, static fn ($c) => new ClickRepository($c->get(PDO::class)));
+        $c?->set(SyncQueueRepository::class, static fn ($c) => new SyncQueueRepository($c->get(PDO::class)));
+
+        $c?->set(AmazonPaApiClient::class, static function ($c): ?AmazonPaApiClient {
+            $creds = self::amazonCredentials($c);
+            if ($creds === null) {
+                return null;
+            }
+            return new AmazonPaApiClient(
+                new PaApiSigner($creds['access'], $creds['secret'], $creds['region'], $creds['host']),
+                $creds['tag'],
+                $creds['host'],
+                $creds['marketplace'],
+            );
+        });
+
+        $c?->set(OfferSync::class, static fn ($c) => new OfferSync(
+            $c->get(PDO::class),
+            $c->get(SyncQueueRepository::class),
+            $c->get(AmazonPaApiClient::class),
+        ));
 
         $this->registerPublic($app, $c);
         $this->registerAdmin($app, $c);
+        $this->registerSync($app, $c);
+    }
+
+    /**
+     * Amazon credentials, DB-first with an env fallback — the platform's
+     * pattern. Null when anything is missing, which is what disables the sync
+     * rather than half-configuring it.
+     *
+     * @return array{access:string,secret:string,tag:string,region:string,host:string,marketplace:string}|null
+     */
+    private static function amazonCredentials(ContainerInterface $c): ?array
+    {
+        $store = null;
+        try {
+            $store = $c->get(SettingsStore::class);
+        } catch (\Throwable) {
+            // No store bound (isolated tests, or a host without a database
+            // yet). Env only, which is the pre-settings behaviour.
+        }
+
+        $plain = static function (string $key, string $env, string $default = '') use ($store): string {
+            $stored = null;
+            try {
+                $stored = $store?->get(self::SETTINGS_NS, $key);
+            } catch (\Throwable) {
+                $stored = null;
+            }
+            $value = trim((string) ($stored ?? ''));
+            return $value !== '' ? $value : (trim((string) (getenv($env) ?: '')) ?: $default);
+        };
+        $secret = static function (string $key, string $env) use ($store): string {
+            $stored = null;
+            try {
+                $stored = $store?->getSecret(self::SETTINGS_NS, $key);
+            } catch (\Throwable) {
+                $stored = null;
+            }
+            $value = trim((string) ($stored ?? ''));
+            return $value !== '' ? $value : trim((string) (getenv($env) ?: ''));
+        };
+
+        $access = $secret('amazon_access_key', 'SHOP_AMAZON_ACCESS_KEY');
+        $secretKey = $secret('amazon_secret_key', 'SHOP_AMAZON_SECRET_KEY');
+        $tag = $plain('amazon_partner_tag', 'SHOP_AMAZON_PARTNER_TAG');
+
+        // All three or nothing. A client built from two of them fails on every
+        // call with a signature error that reads like a code bug.
+        if ($access === '' || $secretKey === '' || $tag === '') {
+            return null;
+        }
+
+        return [
+            'access' => $access,
+            'secret' => $secretKey,
+            'tag' => $tag,
+            'region' => $plain('amazon_region', 'SHOP_AMAZON_REGION', 'eu-west-1'),
+            'host' => $plain('amazon_host', 'SHOP_AMAZON_HOST', 'webservices.amazon.de'),
+            'marketplace' => $plain('amazon_marketplace', 'SHOP_AMAZON_MARKETPLACE', 'www.amazon.de'),
+        ];
     }
 
     /* --- public routes ---------------------------------------------------- */
@@ -94,6 +188,12 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
     private function registerPublic(App $app, ?ContainerInterface $c): void
     {
         $app->get('/content/shop', function (Request $req, Response $res) use ($c): Response {
+            // The sync's primary trigger. Deferred to after the response, at
+            // most once a minute, and only if nobody else is already at it —
+            // see SyncTicker. The catalogue route is chosen because it is what
+            // the shop site hits on every cache miss, so the pages being read
+            // drive the refresh of the prices they show.
+            self::deferSyncTick($c);
             try {
                 $q = $req->getQueryParams();
                 $page = $c->get(ProductRepository::class)->publicList(
@@ -305,6 +405,131 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
             }
             $days = (int) ($req->getQueryParams()['days'] ?? 30);
             return self::json($res, ['products' => $c->get(ClickRepository::class)->topProducts($days)]);
+        });
+    }
+
+    /* --- offer sync ------------------------------------------------------- */
+
+    /**
+     * Ask the ticker to run a batch after this response has been sent.
+     *
+     * Registered as a shutdown function rather than executed inline, so the
+     * decision costs the visitor nothing even when it declines. The ticker
+     * itself then flushes the response before doing any work.
+     *
+     * Everything here is swallowed. This runs on a public content route: a
+     * sync problem must never become a 500 on a page somebody asked for, and
+     * by the time the shutdown function fires there is nobody left to tell.
+     */
+    private static function deferSyncTick(?ContainerInterface $c): void
+    {
+        if ($c === null) {
+            return;
+        }
+        static $armed = false;
+        if ($armed) {
+            return; // one attempt per request, whatever else it touches
+        }
+        $armed = true;
+
+        register_shutdown_function(static function () use ($c): void {
+            try {
+                $sync = $c->get(OfferSync::class);
+                if (!$sync->isConfigured()) {
+                    return;
+                }
+                $dir = rtrim((string) (getenv('SHOP_SYNC_DIR') ?: sys_get_temp_dir()), '/\\')
+                    . '/tds-shop-sync';
+                (new SyncTicker($dir, static function () use ($c, $sync): void {
+                    $c->get(SyncQueueRepository::class)->enqueueStale();
+                    $sync->tick('request');
+                }))->maybeTick();
+            } catch (\Throwable $e) {
+                error_log('[tds-shop] deferred sync tick failed: ' . $e->getMessage());
+            }
+        });
+    }
+
+    private function registerSync(App $app, ?ContainerInterface $c): void
+    {
+        $app->get('/shop/sync/status', function (Request $req, Response $res) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'shop:sync', $res)) !== null) {
+                return $deny;
+            }
+            $status = $c->get(SyncQueueRepository::class)->status();
+            $status['configured'] = $c->get(OfferSync::class)->isConfigured();
+            return self::json($res, $status);
+        });
+
+        $app->post('/shop/sync/enqueue', function (Request $req, Response $res) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'shop:sync', $res)) !== null) {
+                return $deny;
+            }
+            $queue = $c->get(SyncQueueRepository::class);
+            // "Resume" and "refresh now" are one button in the panel: an
+            // operator who has just fixed their Amazon account wants both, and
+            // making them two invites doing only the first and concluding the
+            // sync is broken.
+            $resumed = $queue->resume();
+            $queued = $queue->enqueueStale();
+            $result = $c->get(OfferSync::class)->tick('manual');
+            return self::json($res, ['resumed' => $resumed, 'queued' => $queued] + $result);
+        });
+
+        /**
+         * The optional external trigger.
+         *
+         * Token-gated rather than permission-gated, because whatever calls it
+         * is a machine: an uptime monitor, a GitHub Actions schedule, a Plesk
+         * task if the host happens to have one. Deliberately NOT a
+         * prerequisite — the request-driven ticker is what actually keeps the
+         * catalogue current, and this only makes it faster. Without
+         * `SHOP_SYNC_TOKEN` it answers 503 rather than running unauthenticated.
+         */
+        $app->post('/shop/sync/tick', function (Request $req, Response $res) use ($c): Response {
+            $expected = trim((string) (getenv('SHOP_SYNC_TOKEN') ?: ''));
+            if ($expected === '') {
+                return self::json($res, ['error' => 'sync token not configured'], 503);
+            }
+            $presented = trim($req->getHeaderLine('X-TDS-Sync-Token'));
+            // Constant-time: this is a bearer secret on a public route.
+            if ($presented === '' || !hash_equals($expected, $presented)) {
+                return self::json($res, ['error' => 'Unauthorized'], 401);
+            }
+            $c->get(SyncQueueRepository::class)->enqueueStale();
+            return self::json($res, $c->get(OfferSync::class)->tick('token'));
+        });
+
+        $app->post('/shop/affiliate/lookup', function (Request $req, Response $res) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'shop:write', $res)) !== null) {
+                return $deny;
+            }
+            $client = $c->get(AmazonPaApiClient::class);
+            if ($client === null) {
+                return self::json($res, ['error' => 'Amazon ist nicht konfiguriert.'], 503);
+            }
+            $body = (array) ($req->getParsedBody() ?? []);
+            $asin = strtoupper(trim((string) ($body['asin'] ?? '')));
+            $keywords = trim((string) ($body['keywords'] ?? ''));
+
+            try {
+                if ($asin !== '') {
+                    return self::json($res, ['items' => array_values($client->getItems([$asin]))]);
+                }
+                if ($keywords === '') {
+                    return self::json($res, ['error' => 'ASIN oder Suchbegriff angeben.'], 422);
+                }
+                return self::json($res, ['items' => $client->searchItems($keywords)]);
+            } catch (PaApiException $e) {
+                // The operator is standing right there, so the reason is
+                // reported rather than swallowed — and a revoked account reads
+                // very differently from a typo in an ASIN.
+                return self::json(
+                    $res,
+                    ['error' => $e->getMessage(), 'permanent' => $e->isPermanent()],
+                    $e->isPermanent() ? 502 : 503,
+                );
+            }
         });
     }
 

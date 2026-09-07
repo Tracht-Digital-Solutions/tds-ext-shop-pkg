@@ -11,12 +11,11 @@ import { defineExtension } from "@tracht-digital-solutions/tds-frontend-contract
  *
  * ### Scope of this version
  *
- * Checkpoint 1: the catalogue, the placements that embed it in the journal and
- * the portal, and the click counter. The Amazon offer sync (`shop:sync`) and
- * the Stripe checkout (`shop:orders`) are later checkpoints — their permissions
- * are declared here because the backend module declares them, but neither
- * contributes a nav entry, widget or route yet. A menu item leading to an empty
- * screen teaches an operator to distrust the menu.
+ * The catalogue, the placements that embed it in the journal and the portal,
+ * the click counter, and the Amazon offer sync. The Stripe checkout
+ * (`shop:orders`) is a later checkpoint — its permission is declared because
+ * the backend module declares it, but nothing points at it yet. A menu item
+ * leading to an empty screen teaches an operator to distrust the menu.
  *
  * ### Why `shop-picks` carries no permission
  *
@@ -57,6 +56,15 @@ export default defineExtension({
       permission: "shop:read",
       dataEndpoint: "/shop/summary",
       order: 45,
+    },
+    {
+      id: "shop-sync",
+      title: "Angebotsabgleich",
+      island: "@tracht-digital-solutions/tds-ext-shop/widgets/SyncWidget.astro",
+      size: "sm",
+      permission: "shop:sync",
+      dataEndpoint: "/shop/sync/status",
+      order: 46,
     },
     {
       // Deliberately ungated — see the class doc above.

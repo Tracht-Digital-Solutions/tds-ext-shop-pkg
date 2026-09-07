@@ -1,18 +1,11 @@
 ---
 // TDShop settings, rendered by the base Einstellungen host via
-// virtual:frontend-settings.
-//
-// Checkpoint 1 has nothing to configure: the catalogue needs no credentials.
-// The Amazon Product Advertising keys and the Stripe keys arrive with their own
-// checkpoints and land here, read through the core SettingsStore (namespace
-// `shop`) and encrypted with SETTINGS_ENCRYPTION_KEY — never in .env, and never
-// in a PUBLIC_ variable.
+// virtual:frontend-settings. The Amazon credentials live in the core's runtime
+// settings store (namespace `shop`), encrypted with SETTINGS_ENCRYPTION_KEY —
+// never in .env, and never in a PUBLIC_ variable.
+import ShopSettings from "./ShopSettings.tsx";
 ---
 
 <div class="tds-settings-section__body">
-  <p>
-    Der Katalog braucht keine Zugangsdaten. Die Schlüssel für den
-    Amazon-Angebotsabgleich und für Stripe erscheinen hier, sobald die
-    jeweiligen Funktionen ausgeliefert sind.
-  </p>
+  <ShopSettings client:load />
 </div>

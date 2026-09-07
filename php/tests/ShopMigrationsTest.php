@@ -33,7 +33,16 @@ final class ShopMigrationsTest extends TestCase
         '20260726', '20260727', '20260728', '20260801', '20260826', '20260901',
     ];
 
-    private const OUR_BAND = '20260907';
+    /**
+     * The date bands THIS module claims.
+     *
+     * A list rather than one value, because a module keeps adding migrations
+     * and each lands on the day it was written. Adding a band here is the
+     * deliberate act that says "this day is ours" — which is the point, since
+     * the whole platform shares one `phinxlog` and a reused version aborts
+     * migrations for every module at once.
+     */
+    private const OUR_BANDS = ['20260907', '20260908'];
 
     /** @return list<string> absolute paths */
     private static function files(): array
@@ -86,9 +95,14 @@ final class ShopMigrationsTest extends TestCase
         $versions = [];
         foreach (self::files() as $file) {
             $version = explode('_', basename($file), 2)[0];
-            self::assertStringStartsWith(self::OUR_BAND, $version, basename($file));
+            $band = substr($version, 0, 8);
+            self::assertContains(
+                $band,
+                self::OUR_BANDS,
+                'Band nicht in OUR_BANDS eingetragen: ' . basename($file),
+            );
             self::assertNotContains(
-                substr($version, 0, 8),
+                $band,
                 self::CLAIMED_BANDS,
                 'Band gehört einem anderen Modul: ' . basename($file),
             );

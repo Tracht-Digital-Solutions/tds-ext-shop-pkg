@@ -372,3 +372,69 @@ button padding. Those two checks lived only in `tds-core-frontend-pkg` until
 > local `const field = "…"`, so the check no longer depends on what a variable is
 > *named* (`{field}` passed, `{area}` did not). All 20 repos were re-run after the
 > fix with **zero findings**, so nothing had been hiding behind it.
+
+## The Amazon offer sync
+
+### How it runs at all, on a host with no cron
+
+The production host has no SSH, no guaranteed scheduler, and `proc_open` is
+disabled — there is no process to hold a loop. So the sync is modelled on the
+core's `MigrationRunner`: **work happens on an ordinary request, after the
+response has been sent.** `Support\SyncTicker` claims a marker file under a
+non-blocking `flock`, calls `fastcgi_finish_request()`, then runs one bounded
+batch.
+
+Three triggers, in order of how much they can be relied on:
+
+1. **Request-driven** (`/content/shop`) — primary, and the only one that needs
+   no configuration.
+2. **The panel button** (`POST /shop/sync/enqueue`) — after an import, or after
+   fixing an Amazon account.
+3. **An external ping** (`POST /shop/sync/tick`, token-gated) — an uptime
+   monitor, a GitHub Actions schedule, a Plesk task if the host has one. An
+   accelerator, explicitly **not** a prerequisite. An earlier plan named the
+   Plesk scheduler as primary; that was a guess against a documented fact about
+   this host.
+
+**The honest consequence: an API with no traffic does not sync.** For a shop
+that is fitting — the pages being read drive the refresh of the prices they
+show — but after a quiet spell the first visitor sees prices withheld rather
+than stale. That is the 24-hour rule working, not a bug.
+
+### Four rules in SyncTicker, each a bug if dropped
+
+Claim the marker **before** the slow work (or two simultaneous requests both
+start the same batch); use a **non-blocking** lock (or the sync's slowness
+becomes the visitor's); **flush the response first**; **swallow everything** (a
+sync failure must never be a 500 on a page somebody asked for).
+
+The per-tick budget — three API calls, four seconds — is not tuning. Even after
+`fastcgi_finish_request()` the PHP worker is occupied, so an unbounded tick
+takes a worker out of the pool for as long as Amazon feels like taking.
+
+### Revoked is a state, not an error
+
+Amazon withdraws API access when qualifying sales stop. Retrying cannot help
+and hammering a revoked account is what the licence objects to, so
+`PaApiException::isPermanent()` routes it to `markRevoked()` — the whole queue
+halts and the panel says why. Everything else keeps working: the affiliate
+links are not the API, and prices age out of view within a day on their own.
+
+That is exactly why `SyncWidget` exists. A revoked account has **no other
+symptom** — the shop looks fine, prices just quietly stop appearing.
+
+### `price_checked_at` is stamped in exactly one place
+
+`OfferSync::apply()`. It is the claim that a price came from the API at a known
+moment, and it is what the 24-hour rule reads. Nothing else in this package may
+set it — `setOffers()` deliberately leaves it null for a hand-typed affiliate
+price, so such a price is stored but not displayed until the sync confirms it.
+
+### The signing is split out so it can be tested
+
+`Support\PaApiSigner` is pure and takes its clock as an argument, because it is
+the only part of the integration provable without an Amazon account. A wrong
+signature surfaces in production as `IncompleteSignatureException` from a
+server that will not say which of the four SigV4 steps it disagreed with.
+`PaApiSignerTest` pins the canonical request, the scope, the key derivation and
+the resulting signature.
