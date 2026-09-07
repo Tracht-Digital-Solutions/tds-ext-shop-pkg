@@ -65,6 +65,18 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Pin npm
+        # Node 22 ships npm 10, whose arborist crashes with
+        # "Cannot read properties of null (reading 'edgesOut')" on some
+        # dependency graphs — which is exactly how this repository's very first
+        # release failed, at Install, before a single test ran.
+        #
+        # It bites here and not everywhere because `--no-package-lock` below
+        # makes every run re-resolve the tree from scratch, so the npm doing the
+        # resolving has to be current. The public sites carry the same step for
+        # the same reason; the extension template does not, and should.
+        run: npm install -g npm@11
+
       - name: Install
         # `npm install --no-package-lock` (not `npm ci`): a Windows-generated
         # lockfile pins only win32 optional binaries and breaks the Linux
