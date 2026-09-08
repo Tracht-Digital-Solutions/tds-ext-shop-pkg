@@ -35,10 +35,11 @@ const specifiers = [
 ];
 
 /**
- * The minor line both products caret-pin this package at (`^0.3.0`).
+ * The minor line both products caret-pin this package at (`^0.4.0`).
  *
- * Moved from `0.1` when the Amazon offer sync shipped, and from `0.2` when the
- * payment abstraction did — three providers behind one interface, and a
+ * Moved from `0.1` when the Amazon offer sync shipped, from `0.2` when the
+ * payment abstraction did, and from `0.3` when baskets, delivery and the second
+ * withdrawal regime did — three providers behind one interface, and a
  * migration that renames the order's payment columns, is not something a
  * consumer should pick up without noticing.
  *
@@ -52,7 +53,7 @@ const specifiers = [
  * consumers are `tds-customer-frontend`, `tds-admin-frontend` and
  * `tds-core-frontend-api` (composer).
  */
-const PINNED_MINOR_LINE = "0.3";
+const PINNED_MINOR_LINE = "0.4";
 
 /** `@scope/name/pages/Index.astro` → `pages/Index.astro` */
 const subpath = (spec: string) => spec.slice(pkg.name.length + 1);
