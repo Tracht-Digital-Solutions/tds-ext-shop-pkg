@@ -135,7 +135,7 @@ export default function OrderList() {
             </tr>
           </thead>
           <tbody>
-            {orders.map((order) => (
+            {orders.flatMap((order) => [
               <tr key={order.id}>
                 <td>
                   <button
@@ -146,18 +146,6 @@ export default function OrderList() {
                   >
                     {order.order_no}
                   </button>
-                  {expanded === order.id ? (
-                    <p>
-                      <small>
-                        Widerruf bestätigt: {date(order.withdrawal_consent_at)}
-                        <br />
-                        „{order.withdrawal_consent_text ?? "—"}"
-                        <br />
-                        Netto {euro(order.net_cents, order.currency)} · USt{" "}
-                        {euro(order.tax_cents, order.currency)} · {order.country}
-                      </small>
-                    </p>
-                  ) : null}
                 </td>
                 <td>{date(order.created_at)}</td>
                 <td>
@@ -195,8 +183,31 @@ export default function OrderList() {
                     </button>
                   ) : null}
                 </td>
-              </tr>
-            ))}
+              </tr>,
+
+              /* The detail lives in its OWN full-width row, not inside the
+                 number cell.
+                 Below 40rem `.tds-table` becomes its own horizontal scroll
+                 container, and a column is as wide as its widest cell — so the
+                 full withdrawal wording sitting in the first cell would
+                 stretch that column to thousands of pixels and turn the whole
+                 table into a horizontal drag. A `colSpan` row belongs to no
+                 column and therefore widens none. */
+              expanded === order.id ? (
+                <tr key={`${order.id}-detail`}>
+                  <td colSpan={7}>
+                    <small>
+                      Widerruf bestätigt: {date(order.withdrawal_consent_at)}
+                      <br />
+                      „{order.withdrawal_consent_text ?? "—"}"
+                      <br />
+                      Netto {euro(order.net_cents, order.currency)} · USt{" "}
+                      {euro(order.tax_cents, order.currency)} · {order.country}
+                    </small>
+                  </td>
+                </tr>
+              ) : null,
+            ])}
           </tbody>
         </table>
       )}
