@@ -125,39 +125,94 @@ final class OrderRepository
         }
     }
 
-    public function attachSession(int $orderId, string $sessionId): void
+    /**
+     * Record which provider is handling this order, and its id for the attempt.
+     *
+     * `stripe_session_id` is written as well, for Stripe only, and nothing
+     * reads it. It is one release of overlap so that rolling the
+     * `shop_order_payment_provider` migration back does not strand the rows
+     * created in between — this table records money, and a rollback that loses
+     * the reference loses the ability to reconcile a payment. The follow-up
+     * migration drops the column and this line goes with it.
+     */
+    public function attachPayment(int $orderId, string $provider, string $reference): void
     {
-        $this->pdo->prepare('UPDATE shop_order SET stripe_session_id = :s WHERE id = :id')
-            ->execute(['s' => $sessionId, 'id' => $orderId]);
+        $this->pdo->prepare(
+            'UPDATE shop_order SET payment_provider = :p, provider_session_id = :r,'
+            . " stripe_session_id = CASE WHEN :p2 = 'stripe' THEN :r2 ELSE stripe_session_id END"
+            . ' WHERE id = :id',
+        )->execute([
+            'p' => $provider,
+            'r' => $reference,
+            'p2' => $provider,
+            'r2' => $reference,
+            'id' => $orderId,
+        ]);
     }
 
     /**
      * Mark an order paid, once.
      *
-     * Stripe retries a webhook until it gets a 2xx, so the same
-     * `checkout.session.completed` arrives repeatedly — and a second delivery
-     * must not produce a second fulfilment. The `status = 'pending'` guard in
-     * the WHERE clause is the idempotency: the first delivery updates one row,
-     * every later one updates zero, and the caller can tell which happened.
+     * Every provider retries a webhook until it gets a 2xx, so the same "it is
+     * paid" arrives repeatedly — and a second delivery must not produce a
+     * second fulfilment. The `status = 'pending'` guard in the WHERE clause is
+     * the idempotency: the first delivery updates one row, every later one
+     * updates zero, and the caller can tell which happened. Keep it there. A
+     * SELECT-then-UPDATE would reintroduce the race this avoids.
+     *
+     * ### Why the token is preferred over the provider's reference
+     *
+     * `$token` is OUR identifier, echoed back by the provider (Stripe metadata,
+     * PayPal `custom_id`). `$reference` is theirs. Where both are available the
+     * token wins, because the provider's own id is not always in the event that
+     * matters: PayPal's capture carries the order id only under
+     * `supplementary_data`, a field its documentation calls supplementary and
+     * therefore not something to key a payment state machine on.
      *
      * @return bool true when THIS call was the one that marked it paid
      */
-    public function markPaid(string $sessionId, ?string $paymentIntent): bool
-    {
-        $stmt = $this->pdo->prepare(
-            "UPDATE shop_order SET status = 'paid', stripe_payment_intent = :pi"
-            . " WHERE stripe_session_id = :s AND status = 'pending'",
-        );
-        $stmt->execute(['pi' => $paymentIntent, 's' => $sessionId]);
+    public function markPaid(
+        string $provider,
+        ?string $reference,
+        ?string $paymentRef,
+        ?string $token = null,
+    ): bool {
+        if ($token !== null && $token !== '') {
+            $sql = "UPDATE shop_order SET status = 'paid', provider_payment_ref = :pr"
+                . " WHERE token = :key AND payment_provider = :p AND status = 'pending'";
+            $key = $token;
+        } elseif ($reference !== null && $reference !== '') {
+            $sql = "UPDATE shop_order SET status = 'paid', provider_payment_ref = :pr"
+                . " WHERE provider_session_id = :key AND payment_provider = :p AND status = 'pending'";
+            $key = $reference;
+        } else {
+            // A verified event that identifies no order. Not an error to raise
+            // at the provider — it would only retry — but nothing to act on.
+            return false;
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['pr' => $paymentRef, 'key' => $key, 'p' => $provider]);
         return $stmt->rowCount() === 1;
     }
 
-    public function markRefunded(string $paymentIntent): bool
+    /** Same two-identifier rule as {@see markPaid()}, and the same one-shot guard. */
+    public function markRefunded(string $provider, ?string $paymentRef, ?string $token = null): bool
     {
-        $stmt = $this->pdo->prepare(
-            "UPDATE shop_order SET status = 'refunded' WHERE stripe_payment_intent = :pi AND status = 'paid'",
-        );
-        $stmt->execute(['pi' => $paymentIntent]);
+        if ($paymentRef !== null && $paymentRef !== '') {
+            $sql = "UPDATE shop_order SET status = 'refunded'"
+                . " WHERE provider_payment_ref = :key AND payment_provider = :p AND status = 'paid'";
+            $key = $paymentRef;
+        } elseif ($token !== null && $token !== '') {
+            $sql = "UPDATE shop_order SET status = 'refunded'"
+                . " WHERE token = :key AND payment_provider = :p AND status = 'paid'";
+            $key = $token;
+        } else {
+            return false;
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['key' => $key, 'p' => $provider]);
         return $stmt->rowCount() === 1;
     }
 
@@ -173,9 +228,16 @@ final class OrderRepository
         $items = $this->pdo->prepare('SELECT * FROM shop_order_item WHERE order_id = :id');
         $items->execute(['id' => (int) $order['id']]);
 
-        // Never leaked to the customer view: the Stripe ids are operational
-        // detail, and the token is already in their hands.
-        unset($order['stripe_session_id'], $order['stripe_payment_intent'], $order['note']);
+        // Never leaked to the customer view: the provider ids are operational
+        // detail, and the token is already in their hands. `payment_provider`
+        // stays — the customer may reasonably see which method they paid with.
+        unset(
+            $order['stripe_session_id'],
+            $order['stripe_payment_intent'],
+            $order['provider_session_id'],
+            $order['provider_payment_ref'],
+            $order['note'],
+        );
         $order['items'] = $items->fetchAll(PDO::FETCH_ASSOC) ?: [];
         return $order;
     }

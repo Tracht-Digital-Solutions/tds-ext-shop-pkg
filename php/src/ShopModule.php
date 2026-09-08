@@ -13,12 +13,19 @@ use Tds\Ext\Shop\Domain\PlacementRepository;
 use Tds\Ext\Shop\Domain\OrderRepository;
 use Tds\Ext\Shop\Domain\ProductRepository;
 use Tds\Ext\Shop\Domain\SyncQueueRepository;
+use Tds\Ext\Shop\Payment\PaymentEvent;
+use Tds\Ext\Shop\Payment\PaymentFailed;
+use Tds\Ext\Shop\Payment\PaymentNotConfigured;
+use Tds\Ext\Shop\Payment\PaymentRegistry;
+use Tds\Ext\Shop\Payment\PaymentRequest;
+use Tds\Ext\Shop\Payment\PayPalProvider;
+use Tds\Ext\Shop\Payment\StripeProvider;
+use Tds\Ext\Shop\Payment\WebhookNotVerified;
+use Tds\Ext\Shop\Payment\WeroProvider;
 use Tds\Ext\Shop\Service\AmazonPaApiClient;
 use Tds\Ext\Shop\Service\OfferSync;
 use Tds\Ext\Shop\Service\PaApiException;
 use Tds\Ext\Shop\Service\StripeClient;
-use Tds\Ext\Shop\Service\StripeException;
-use Tds\Ext\Shop\Service\WebhookVerifier;
 use Tds\Ext\Shop\Support\PaApiSigner;
 use Tds\Ext\Shop\Support\SyncTicker;
 use Tds\Frontend\Contract\AbstractModule;
@@ -118,8 +125,48 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
         $c?->set(OrderRepository::class, static fn ($c) => new OrderRepository($c->get(PDO::class)));
 
         $c?->set(StripeClient::class, static function ($c): ?StripeClient {
-            $key = self::stripeSetting($c, 'stripe_secret_key', 'SHOP_STRIPE_SECRET_KEY', true);
+            $key = self::setting($c, 'stripe_secret_key', 'SHOP_STRIPE_SECRET_KEY', true);
             return $key === '' ? null : new StripeClient($key);
+        });
+
+        /**
+         * The payment providers, in the order the checkout offers them.
+         *
+         * Every one is constructed unconditionally, including the ones with no
+         * credentials — an unconfigured provider answers `isConfigured() ===
+         * false` and is filtered out of the menu by
+         * {@see PaymentRegistry::configured()}. Building the list from what
+         * happens to be configured would mean the SHAPE of this container
+         * changed with the settings, and a webhook arriving for a provider
+         * whose secret was just cleared would 404 instead of answering 503 —
+         * which is the difference between "we cannot verify this right now"
+         * and "this endpoint does not exist".
+         *
+         * PayPal first: it is the method German consumers reach for, and the
+         * first entry is what a customer with no preference takes.
+         */
+        $c?->set(PaymentRegistry::class, static function ($c): PaymentRegistry {
+            $sandbox = self::setting($c, 'paypal_sandbox', 'SHOP_PAYPAL_SANDBOX', false) !== '';
+
+            return new PaymentRegistry([
+                new PayPalProvider(
+                    self::setting($c, 'paypal_client_id', 'SHOP_PAYPAL_CLIENT_ID', false),
+                    self::setting($c, 'paypal_secret', 'SHOP_PAYPAL_SECRET', true),
+                    self::setting($c, 'paypal_webhook_id', 'SHOP_PAYPAL_WEBHOOK_ID', false),
+                    $sandbox ? PayPalProvider::SANDBOX : PayPalProvider::LIVE,
+                ),
+                new StripeProvider(
+                    $c->get(StripeClient::class),
+                    self::setting($c, 'stripe_webhook_secret', 'SHOP_STRIPE_WEBHOOK_SECRET', true),
+                ),
+                // Seated, not finished. Invisible until a PSP is configured —
+                // see the class doc and docs/wero-adapter.md.
+                new WeroProvider(
+                    self::setting($c, 'wero_psp', 'SHOP_WERO_PSP', false),
+                    self::setting($c, 'wero_api_key', 'SHOP_WERO_API_KEY', true),
+                    self::setting($c, 'wero_webhook_secret', 'SHOP_WERO_WEBHOOK_SECRET', true),
+                ),
+            ]);
         });
 
         $this->registerPublic($app, $c);
@@ -595,8 +642,14 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
                 ], 422);
             }
 
-            $stripe = $c->get(StripeClient::class);
-            if ($stripe === null || !$stripe->isConfigured()) {
+            $registry = $c->get(PaymentRegistry::class);
+            // No `provider` in the request means "whatever this shop leads
+            // with" — a page that has not been updated for a new method still
+            // works. `usable()` is what stops a hand-crafted request from
+            // naming one that is registered but has no credentials.
+            $providerId = trim((string) ($body['provider'] ?? '')) ?: (string) $registry->defaultId();
+            $provider = $registry->usable($providerId);
+            if ($provider === null) {
                 return self::json($res, ['error' => 'Der Kauf ist derzeit nicht möglich.'], 503);
             }
 
@@ -617,68 +670,129 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
 
             $base = self::shopBaseUrl();
             try {
-                $session = $stripe->createCheckoutSession(
+                $handoff = $provider->start(new PaymentRequest(
                     $order['orderNo'],
+                    $order['token'],
                     (string) $offer['title'],
                     $order['gross'],
                     (string) ($offer['currency'] ?? 'EUR'),
                     $email,
                     "{$base}/bestellung/{$order['token']}",
                     "{$base}/produkt/{$offer['slug']}",
-                    ['order_no' => $order['orderNo'], 'token' => $order['token']],
-                );
-            } catch (StripeException $e) {
+                ));
+            } catch (PaymentNotConfigured) {
+                // Between `usable()` above and here somebody cleared a secret.
+                return self::json($res, ['error' => 'Der Kauf ist derzeit nicht möglich.'], 503);
+            } catch (PaymentFailed) {
+                // The order stays `pending` with no reference attached, which is
+                // exactly what it is: an attempt that never reached a provider.
+                // It is NOT deleted — an order row that vanishes is one nobody
+                // can reconcile against a payment that arrives late anyway.
                 return self::json($res, ['error' => 'Die Zahlung konnte nicht gestartet werden.'], 502);
             }
 
-            $orders->attachSession($order['id'], $session['id']);
-            return self::json($res, ['url' => $session['url'], 'token' => $order['token']]);
+            $orders->attachPayment($order['id'], $provider->id(), $handoff->reference);
+            return self::json($res, ['url' => $handoff->redirectUrl, 'token' => $order['token']]);
         });
 
         /**
-         * Stripe's webhook.
+         * Which payment methods this shop can actually complete right now.
+         *
+         * The checkout renders this list rather than a hard-coded one, and that
+         * is what keeps an unfinished adapter harmless: Wero is registered, but
+         * it answers `isConfigured() === false`, so it never appears here and
+         * cannot be selected. The day a PSP is configured it shows up with no
+         * frontend change at all.
+         *
+         * Unauthenticated and site-key-free, like the rest of `/shop/*`: it is
+         * called by a visitor's browser, and it discloses nothing the checkout
+         * page would not show them a second later.
+         */
+        $app->get('/shop/payment-methods', function (Request $req, Response $res) use ($c): Response {
+            return self::json($res, ['methods' => $c->get(PaymentRegistry::class)->configured()]);
+        });
+
+        /**
+         * One webhook endpoint per provider.
          *
          * Outside `/content/shop` on purpose — a site-key prefix would reject
-         * Stripe, which holds no key. It authenticates by signature instead.
+         * every provider, none of which holds a key. They authenticate by
+         * signature instead, and each verifies its own: the schemes have
+         * nothing in common (Stripe signs an HMAC over the raw body, PayPal
+         * wants a round trip to its own verification endpoint).
          *
-         * The raw body is required: the signature covers the exact bytes, so a
-         * parsed-and-re-encoded payload will not verify.
+         * The RAW body goes down untouched. Stripe's signature covers the exact
+         * bytes, so a parsed-and-re-encoded payload will not verify — and the
+         * gateway relays bodies byte-for-byte precisely so that this works.
          */
-        $app->post('/shop/stripe/webhook', function (Request $req, Response $res) use ($c): Response {
-            $secret = self::stripeSetting($c, 'stripe_webhook_secret', 'SHOP_STRIPE_WEBHOOK_SECRET', true);
-            if ($secret === '') {
-                return self::json($res, ['error' => 'webhook secret not configured'], 503);
+        $webhook = function (Request $req, Response $res, array $args) use ($c): Response {
+            $provider = $c->get(PaymentRegistry::class)->get((string) ($args['provider'] ?? 'stripe'));
+            if ($provider === null) {
+                return self::json($res, ['error' => 'Unknown provider'], 404);
             }
-            $payload = (string) $req->getBody();
-            if (!WebhookVerifier::verify($payload, $req->getHeaderLine('Stripe-Signature'), $secret)) {
-                return self::json($res, ['error' => 'Invalid signature'], 400);
+
+            // Slim reports header names as they were sent; providers document
+            // them in mixed case and send them in another. Lower-case once,
+            // here, so no adapter has to guess.
+            $headers = [];
+            foreach ($req->getHeaders() as $name => $values) {
+                $headers[strtolower((string) $name)] = implode(',', $values);
             }
 
             try {
-                $event = json_decode($payload, true, 16, JSON_THROW_ON_ERROR);
-            } catch (\Throwable) {
-                return self::json($res, ['error' => 'Invalid payload'], 400);
+                $event = $provider->receiveWebhook((string) $req->getBody(), $headers);
+            } catch (PaymentNotConfigured) {
+                // Fail CLOSED. An endpoint that accepted unverifiable webhooks
+                // would be a way to mark any order paid.
+                return self::json($res, ['error' => 'webhook secret not configured'], 503);
+            } catch (WebhookNotVerified) {
+                // Nothing else. An endpoint that explains why a forgery was
+                // rejected is an oracle for producing one that is not.
+                return self::json($res, ['error' => 'Invalid signature'], 400);
+            } catch (PaymentFailed) {
+                // A verified event whose follow-up call failed — PayPal's
+                // capture, say. 502 so the provider RETRIES it; swallowing this
+                // as a 200 would lose an approved payment for good.
+                return self::json($res, ['error' => 'Upstream call failed'], 502);
             }
 
-            $type = (string) ($event['type'] ?? '');
-            $object = (array) ($event['data']['object'] ?? []);
-            $orders = $c->get(OrderRepository::class);
-
-            if ($type === 'checkout.session.completed') {
-                $sessionId = (string) ($object['id'] ?? '');
-                $intent = isset($object['payment_intent']) ? (string) $object['payment_intent'] : null;
-                // markPaid() is idempotent by its WHERE clause: Stripe retries
-                // until it gets a 2xx, so this arrives more than once and must
-                // fulfil only the first time.
-                $orders->markPaid($sessionId, $intent);
-            } elseif ($type === 'charge.refunded') {
-                $orders->markRefunded((string) ($object['payment_intent'] ?? ''));
+            if ($event !== null) {
+                $orders = $c->get(OrderRepository::class);
+                if ($event->kind === PaymentEvent::PAID) {
+                    // Idempotent by its WHERE clause: providers retry until they
+                    // get a 2xx, so this arrives more than once and must fulfil
+                    // only the first time.
+                    $orders->markPaid(
+                        $provider->id(),
+                        $event->reference,
+                        $event->paymentRef,
+                        $event->orderToken,
+                    );
+                } elseif ($event->kind === PaymentEvent::REFUNDED) {
+                    $orders->markRefunded($provider->id(), $event->paymentRef, $event->orderToken);
+                }
             }
 
-            // 200 for an event we do not handle, too. A non-2xx makes Stripe
-            // retry it forever.
+            // 200 for a verified event we do not act on, too. A non-2xx makes
+            // the provider retry it forever.
             return self::json($res, ['received' => true]);
-        });
+        };
+
+        $app->post('/shop/payment/{provider:[a-z]+}/webhook', $webhook);
+
+        /**
+         * The original Stripe endpoint, kept as an alias.
+         *
+         * This URL is configured in the Stripe dashboard and has been receiving
+         * live events. Renaming a route a third party calls is a way to lose
+         * payments silently — Stripe would retry into a 404 for three days and
+         * then give up. It stays until the dashboard is repointed at
+         * `/shop/payment/stripe/webhook` and the logs are quiet.
+         */
+        $app->post(
+            '/shop/stripe/webhook',
+            fn (Request $req, Response $res) => $webhook($req, $res, ['provider' => 'stripe']),
+        );
 
         /** The customer's own order view. The token is the authorisation. */
         $app->get('/shop/order/{token:[a-f0-9]{32}}', function (Request $req, Response $res, array $args) use ($c): Response {
@@ -745,8 +859,8 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
         return $base !== '' ? $base : 'https://shop.tracht-digital.de';
     }
 
-    /** One Stripe setting, DB-first with an env fallback. */
-    private static function stripeSetting(
+    /** One shop setting, DB-first with an env fallback. Any provider's, not just Stripe's. */
+    private static function setting(
         ContainerInterface $c,
         string $key,
         string $env,
@@ -854,10 +968,11 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
      *   gated on the user's permissions, and listing them here would offer a
      *   second door.
      * - Anything a visitor's own browser calls directly. A key that ships in a
-     *   client bundle is not a key. The Stripe webhook, when it arrives in a
-     *   later checkpoint, is the sharpest case: Stripe holds no site key, so a
-     *   webhook under this prefix would be rejected outright. It belongs under
-     *   `/shop/stripe/webhook` and authenticates by signature instead.
+     *   client bundle is not a key. The payment webhooks are the sharpest
+     *   case: no provider holds a site key, so a webhook under this prefix
+     *   would be rejected outright. They live under
+     *   `/shop/payment/{provider}/webhook` and authenticate by signature
+     *   instead — each provider verifying its own scheme.
      *
      * And never widen this to `/content` — that would swallow the routes of
      * every other module that publishes there.

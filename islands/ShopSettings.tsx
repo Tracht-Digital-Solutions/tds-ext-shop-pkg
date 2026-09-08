@@ -44,6 +44,18 @@ export default function ShopSettings() {
   const [stripeKeyInput, setStripeKeyInput] = useState("");
   const [stripeHookInput, setStripeHookInput] = useState("");
 
+  const [ppSecretState, setPpSecretState] = useState<Masked | null>(null);
+  const [ppClientId, setPpClientId] = useState("");
+  const [ppSecretInput, setPpSecretInput] = useState("");
+  const [ppWebhookId, setPpWebhookId] = useState("");
+  const [ppSandbox, setPpSandbox] = useState(false);
+
+  const [weroKeyState, setWeroKeyState] = useState<Masked | null>(null);
+  const [weroHookState, setWeroHookState] = useState<Masked | null>(null);
+  const [weroPsp, setWeroPsp] = useState("");
+  const [weroKeyInput, setWeroKeyInput] = useState("");
+  const [weroHookInput, setWeroHookInput] = useState("");
+
   const load = async () => {
     try {
       const res = await apiFetch(NS);
@@ -64,6 +76,13 @@ export default function ShopSettings() {
       setMarketplace(map.get("amazon_marketplace")?.value ?? "www.amazon.de");
       setStripeKeyState(map.get("stripe_secret_key") ?? null);
       setStripeHookState(map.get("stripe_webhook_secret") ?? null);
+      setPpSecretState(map.get("paypal_secret") ?? null);
+      setPpClientId(map.get("paypal_client_id")?.value ?? "");
+      setPpWebhookId(map.get("paypal_webhook_id")?.value ?? "");
+      setPpSandbox((map.get("paypal_sandbox")?.value ?? "") !== "");
+      setWeroKeyState(map.get("wero_api_key") ?? null);
+      setWeroHookState(map.get("wero_webhook_secret") ?? null);
+      setWeroPsp(map.get("wero_psp")?.value ?? "");
       setError(null);
     } catch {
       setError("Keine Verbindung zur API.");
@@ -89,6 +108,16 @@ export default function ShopSettings() {
         { key: "amazon_marketplace", secret: false, value: marketplace.trim() },
         { key: "stripe_secret_key", secret: true, value: stripeKeyInput.trim() },
         { key: "stripe_webhook_secret", secret: true, value: stripeHookInput.trim() },
+        { key: "paypal_client_id", secret: false, value: ppClientId.trim() },
+        { key: "paypal_secret", secret: true, value: ppSecretInput.trim() },
+        { key: "paypal_webhook_id", secret: false, value: ppWebhookId.trim() },
+        // Any non-empty value means sandbox; empty means live. A boolean would
+        // be tidier, but the settings store holds strings and "false" is a
+        // non-empty string — which is how a sandbox flag becomes a live one.
+        { key: "paypal_sandbox", secret: false, value: ppSandbox ? "1" : "" },
+        { key: "wero_psp", secret: false, value: weroPsp.trim() },
+        { key: "wero_api_key", secret: true, value: weroKeyInput.trim() },
+        { key: "wero_webhook_secret", secret: true, value: weroHookInput.trim() },
       ];
       const res = await apiFetch(NS, {
         method: "PUT",
@@ -103,6 +132,9 @@ export default function ShopSettings() {
       setSecretInput("");
       setStripeKeyInput("");
       setStripeHookInput("");
+      setPpSecretInput("");
+      setWeroKeyInput("");
+      setWeroHookInput("");
       toast.success("Gespeichert.");
       await load();
     } catch {
@@ -202,6 +234,105 @@ export default function ShopSettings() {
             value={stripeHookInput}
             onChange={(e) => setStripeHookInput(e.target.value)}
             placeholder="whsec_…"
+          />
+        </label>
+      </div>
+
+      <h3>PayPal</h3>
+      <div className="tds-alert tds-alert--info">
+        Direkt über Orders v2, nicht über einen zweiten Dienstleister. Die
+        Webhook-ID gehört zu den Zugangsdaten und ist keine Formalität: ohne sie
+        lässt sich ein Ereignis nicht prüfen, und eine Zahlungsart, die eine
+        Zahlung starten, aber nie bestätigen kann, wird deshalb gar nicht erst
+        angeboten. Webhook-Adresse:{" "}
+        <code>/shop/payment/paypal/webhook</code>
+      </div>
+
+      <div className="tds-field-row">
+        <label>
+          Client-ID
+          <input
+            className="field-boxed"
+            value={ppClientId}
+            onChange={(e) => setPpClientId(e.target.value)}
+            placeholder="leer = PayPal aus"
+          />
+        </label>
+        <label>
+          Secret <em>({hint(ppSecretState)})</em>
+          <input
+            className="field-boxed"
+            type="password"
+            autoComplete="off"
+            value={ppSecretInput}
+            onChange={(e) => setPpSecretInput(e.target.value)}
+            placeholder="leer lassen = unverändert"
+          />
+        </label>
+      </div>
+
+      <div className="tds-field-row">
+        <label>
+          Webhook-ID
+          <input
+            className="field-boxed"
+            value={ppWebhookId}
+            onChange={(e) => setPpWebhookId(e.target.value)}
+            placeholder="WH-…"
+          />
+        </label>
+        <label className="tds-toggle-row">
+          <input
+            type="checkbox"
+            checked={ppSandbox}
+            onChange={(e) => setPpSandbox(e.target.checked)}
+          />
+          Sandbox statt Live
+        </label>
+      </div>
+
+      <h3>Wero</h3>
+      <div className="tds-alert tds-alert--warning">
+        Noch nicht angeschlossen. Wero läuft über einen Zahlungsdienstleister,
+        und solange hier keiner eingetragen ist, erscheint die Zahlungsart in
+        der Kasse überhaupt nicht — sie lässt sich also nicht versehentlich
+        anbieten. Was zum Fertigstellen fehlt, steht in{" "}
+        <code>docs/wero-adapter.md</code>.
+      </div>
+
+      <div className="tds-field-row">
+        <label>
+          Dienstleister
+          <input
+            className="field-boxed"
+            value={weroPsp}
+            onChange={(e) => setWeroPsp(e.target.value)}
+            placeholder="leer = Wero aus"
+          />
+        </label>
+        <label>
+          API-Schlüssel <em>({hint(weroKeyState)})</em>
+          <input
+            className="field-boxed"
+            type="password"
+            autoComplete="off"
+            value={weroKeyInput}
+            onChange={(e) => setWeroKeyInput(e.target.value)}
+            placeholder="leer lassen = unverändert"
+          />
+        </label>
+      </div>
+
+      <div className="tds-field-row">
+        <label>
+          Webhook-Secret <em>({hint(weroHookState)})</em>
+          <input
+            className="field-boxed"
+            type="password"
+            autoComplete="off"
+            value={weroHookInput}
+            onChange={(e) => setWeroHookInput(e.target.value)}
+            placeholder="leer lassen = unverändert"
           />
         </label>
       </div>

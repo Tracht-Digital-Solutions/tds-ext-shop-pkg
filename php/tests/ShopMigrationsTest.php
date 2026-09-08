@@ -42,7 +42,7 @@ final class ShopMigrationsTest extends TestCase
      * the whole platform shares one `phinxlog` and a reused version aborts
      * migrations for every module at once.
      */
-    private const OUR_BANDS = ['20260907', '20260908'];
+    private const OUR_BANDS = ['20260907', '20260908', '20260909'];
 
     /** @return list<string> absolute paths */
     private static function files(): array

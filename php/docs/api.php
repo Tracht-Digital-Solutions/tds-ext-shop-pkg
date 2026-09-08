@@ -254,15 +254,16 @@ return [
     [
         'method' => 'POST',
         'pattern' => '/shop/checkout',
-        'summary' => 'Stripe-Checkout-Session anlegen',
+        'summary' => 'Zahlung starten (Anbieter waehlbar)',
         'description' => 'Vom Browser des Besuchers aufgerufen, deshalb NICHT site-key-'
             . 'geschuetzt. Der Preis wird aus der Datenbank gelesen, nie aus der Anfrage — ein '
             . 'gesendeter Preis ist ein Preis, den der Kunde gewaehlt hat. Zwei Ablehnungen sind '
             . 'keine Formalitaeten: ohne Widerrufsbestaetigung (§ 356 Abs. 4 BGB) erlischt das '
             . 'Widerrufsrecht nicht, und ausserhalb der erlaubten Laender entstuende eine '
             . 'OSS-Pflicht (§ 3a Abs. 5 UStG). Der Bestellknopf mit "Zahlungspflichtig '
-            . 'bestellen" steht auf UNSERER Seite (§ 312j Abs. 3 BGB) — Stripe ist nur der '
-            . 'Zahlungsschritt danach.',
+            . 'bestellen" steht auf UNSERER Seite (§ 312j Abs. 3 BGB) — der Anbieter ist nur der '
+            . 'Zahlungsschritt danach. `provider` waehlt zwischen den konfigurierten Anbietern; '
+            . 'ein nicht konfigurierter wird mit 503 abgewiesen, auch wenn er registriert ist.',
         'auth' => 'public',
         'tag' => 'Kauf',
         'params' => [
@@ -270,28 +271,75 @@ return [
             ['name' => 'email', 'in' => 'body', 'description' => 'Pflicht, wird validiert.'],
             ['name' => 'name', 'in' => 'body', 'description' => 'Optional.'],
             ['name' => 'country', 'in' => 'body', 'description' => 'ISO-2, Vorgabe `DE`.'],
+            ['name' => 'provider', 'in' => 'body', 'description' => 'Zahlungsart aus '
+                . '`GET /shop/payment-methods`. Leer = der erste konfigurierte Anbieter.'],
             ['name' => 'withdrawalConsent', 'in' => 'body', 'description' => 'Muss `true` sein.'],
             ['name' => 'withdrawalText', 'in' => 'body', 'description' => 'Der exakt angezeigte '
                 . 'Wortlaut; wird in der Bestellung mitgespeichert, nicht nur referenziert.'],
         ],
         'responses' => [
-            ['status' => 200, 'description' => '`{url, token}` — `url` fuehrt zu Stripe.'],
+            ['status' => 200, 'description' => '`{url, token}` — `url` fuehrt zum Anbieter.'],
             ['status' => 404, 'description' => 'Kein verkaeufliches Angebot unter diesem Slug.'],
             ['status' => 422, 'description' => 'E-Mail, Widerrufsbestaetigung oder Land.'],
-            ['status' => 502, 'description' => 'Stripe hat die Session abgelehnt.'],
-            ['status' => 503, 'description' => 'Stripe ist nicht konfiguriert.'],
+            ['status' => 502, 'description' => 'Der Anbieter hat die Zahlung abgelehnt.'],
+            ['status' => 503, 'description' => 'Kein Anbieter konfiguriert.'],
+        ],
+    ],
+    [
+        'method' => 'GET',
+        'pattern' => '/shop/payment-methods',
+        'summary' => 'Verfuegbare Zahlungsarten',
+        'description' => 'Was der Shop gerade wirklich abschliessen kann, in Anzeigereihenfolge. '
+            . 'Die Kasse rendert diese Liste statt einer fest verdrahteten — das ist der Grund, '
+            . 'warum ein unfertiger Adapter ungefaehrlich im Baum liegen kann: Wero ist '
+            . 'registriert, meldet aber `isConfigured() === false` und taucht deshalb hier nicht '
+            . 'auf. Sobald ein PSP hinterlegt ist, erscheint es ohne Frontend-Aenderung.',
+        'auth' => 'public',
+        'tag' => 'Kauf',
+        'params' => [],
+        'responses' => [
+            ['status' => 200, 'description' => '`{methods: [{id, label}]}` — moeglicherweise leer.'],
+        ],
+    ],
+    [
+        'method' => 'POST',
+        'pattern' => '/shop/payment/{provider:[a-z]+}/webhook',
+        'summary' => 'Zahlungs-Webhook (signaturgeprueft)',
+        'description' => 'Bewusst AUSSERHALB von `/content/shop`: kein Anbieter kennt einen '
+            . 'Site-Key, und SiteKeyMiddleware vergleicht segmentweise — unter dem Praefix wuerde '
+            . 'jeder Aufruf abgewiesen. Jeder Anbieter prueft sein EIGENES Verfahren: Stripe eine '
+            . 'HMAC ueber den rohen Body, PayPal ueber einen Rueckruf an seinen '
+            . 'Verifikationsendpunkt. Der rohe Body wird unveraendert durchgereicht, sonst '
+            . 'verifiziert Stripe nicht. `markPaid()` ist ueber seine WHERE-Klausel idempotent, '
+            . 'weil jeder Anbieter bis zu einer 2xx-Antwort wiederholt. Ein verifiziertes, aber '
+            . 'nicht behandeltes Ereignis wird ebenfalls mit 200 quittiert. Bei PayPal wird auf '
+            . '`CHECKOUT.ORDER.APPROVED` hin abgebucht — eine Freigabe ist noch kein Geld.',
+        'auth' => 'token',
+        'tag' => 'Kauf',
+        'params' => [
+            ['name' => 'provider', 'in' => 'path', 'description' => '`stripe` | `paypal` | `wero`.'],
+            ['name' => 'Stripe-Signature', 'in' => 'header', 'description' => 'Von Stripe gesetzt.'],
+            ['name' => 'Paypal-Transmission-Sig', 'in' => 'header', 'description' => 'Von PayPal '
+                . 'gesetzt, zusammen mit `-Id`, `-Time`, `Paypal-Cert-Url` und `Paypal-Auth-Algo`.'],
+        ],
+        'responses' => [
+            ['status' => 200, 'description' => '`{received: true}`'],
+            ['status' => 400, 'description' => 'Signatur ungueltig — ohne Begruendung.'],
+            ['status' => 404, 'description' => 'Unbekannter Anbieter.'],
+            ['status' => 502, 'description' => 'Folgeaufruf beim Anbieter fehlgeschlagen (Capture).'],
+            ['status' => 503, 'description' => 'Kein Webhook-Secret konfiguriert — faellt bewusst zu.'],
         ],
     ],
     [
         'method' => 'POST',
         'pattern' => '/shop/stripe/webhook',
-        'summary' => 'Stripe-Webhook (signaturgeprueft)',
-        'description' => 'Bewusst AUSSERHALB von `/content/shop`: Stripe kennt keinen Site-Key, '
-            . 'und SiteKeyMiddleware vergleicht segmentweise — unter dem Praefix wuerde jeder '
-            . 'Aufruf abgewiesen. Authentifiziert wird ueber die Signatur ueber den ROHEN Body. '
-            . '`markPaid()` ist ueber seine WHERE-Klausel idempotent, weil Stripe bis zu einer '
-            . '2xx-Antwort wiederholt. Ein nicht behandeltes Ereignis wird ebenfalls mit 200 '
-            . 'quittiert, sonst wiederholt Stripe es endlos.',
+        'summary' => 'Stripe-Webhook (Altpfad, identisches Verhalten)',
+        'description' => 'Dieselbe Behandlung wie `/shop/payment/stripe/webhook`. Bleibt '
+            . 'bestehen, weil diese Adresse im Stripe-Dashboard hinterlegt ist und dort '
+            . 'Live-Ereignisse empfaengt: eine Route umzubenennen, die ein Dritter aufruft, ist '
+            . 'ein Weg, Zahlungen still zu verlieren — Stripe wiederholt drei Tage lang gegen '
+            . 'einen 404 und gibt dann auf. Faellt weg, sobald das Dashboard umgestellt und die '
+            . 'Protokolle ruhig sind.',
         'auth' => 'token',
         'tag' => 'Kauf',
         'params' => [
@@ -299,8 +347,8 @@ return [
         ],
         'responses' => [
             ['status' => 200, 'description' => '`{received: true}`'],
-            ['status' => 400, 'description' => 'Signatur oder Payload ungueltig.'],
-            ['status' => 503, 'description' => 'Kein Webhook-Secret konfiguriert — faellt bewusst zu.'],
+            ['status' => 400, 'description' => 'Signatur ungueltig.'],
+            ['status' => 503, 'description' => 'Kein Webhook-Secret konfiguriert.'],
         ],
     ],
     [

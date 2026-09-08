@@ -482,19 +482,66 @@ is a price the customer chose.
 
 ### The webhook
 
-Mounted at `/shop/stripe/webhook`, deliberately **outside** `/content/shop`:
-`SiteKeyMiddleware::matches()` compares segment-wise, and Stripe holds no site
-key, so under the prefix every delivery would be rejected. It authenticates by
-signature over the **raw** body — a parsed-and-re-encoded payload will not
-verify.
+One endpoint per provider at `/shop/payment/{provider}/webhook`, deliberately
+**outside** `/content/shop`: `SiteKeyMiddleware::matches()` compares
+segment-wise, and no provider holds a site key, so under the prefix every
+delivery would be rejected. Each authenticates its own way — Stripe an HMAC over
+the **raw** body, PayPal a round trip to its own verification endpoint — and the
+raw bytes go down untouched, because a parsed-and-re-encoded payload will not
+verify under an HMAC.
+
+`/shop/stripe/webhook` is still mounted and behaves identically. It is the URL
+configured in the Stripe dashboard, receiving live events: renaming a route a
+third party calls is a way to lose payments silently, because Stripe retries
+into a 404 for three days and then gives up. It goes when the dashboard is
+repointed and the logs are quiet.
 
 `markPaid()` is idempotent through its `WHERE status = 'pending'` clause,
-because Stripe retries until it gets a 2xx and a second delivery must not
-fulfil twice. An unhandled event type also answers 200; anything else makes
-Stripe retry it forever.
+because every provider retries until it gets a 2xx and a second delivery must
+not fulfil twice. A verified but unhandled event also answers 200; anything else
+makes the provider retry it forever.
 
 A missing webhook secret answers **503**, not 200. Failing open here would mean
 a host that forgot to configure it accepts any POST as payment.
+
+### Three providers behind one interface
+
+`php/src/Payment/` — `PaymentProvider` and a `PaymentRegistry`. Before it, the
+shop's payment methods were one array literal in `StripeClient`
+(`'payment_method_types' => ['card']`), the order table carried Stripe-named
+columns, and the client was injected by concrete class. That is workable for one
+provider and not for three.
+
+**The registered/configured distinction is the load-bearing part.** A provider
+is *registered* as soon as its class exists; it is *offered* only when
+`isConfigured()` says yes. `GET /shop/payment-methods` lists the configured
+ones, `POST /shop/checkout` re-checks with `usable()`, and
+`PaymentRegistry::get()` deliberately still returns an unconfigured provider so
+its webhook answers 503 rather than 404 — "we cannot verify this right now"
+rather than "this endpoint does not exist".
+
+That single gate is what lets **`WeroProvider` sit in the tree unfinished**. It
+answers false, so Wero never reaches a customer. Do not make it optimistic; see
+`docs/wero-adapter.md`.
+
+**PayPal is not shaped like Stripe.** `checkout.session.completed` means the
+money moved; `CHECKOUT.ORDER.APPROVED` does not. An approved PayPal order is a
+promise that expires unless the merchant captures it — so `PayPalProvider`
+captures on that webhook and reports paid only on
+`PAYMENT.CAPTURE.COMPLETED`. Capturing there rather than on the customer's
+return is the point: someone who approves and closes the tab has still paid.
+This is also why the interface method is called `receiveWebhook` and not
+`parseWebhook` — a method named `parse` that moves money is a lie.
+
+**Orders are matched on our own token first.** Providers echo it back (Stripe
+metadata, PayPal `custom_id`), and it beats their id because their id is not
+always in the event that matters: PayPal's capture carries the order id only
+under `supplementary_data`, a field its own documentation calls supplementary.
+
+`shop_order.payment_provider` + `provider_session_id` + `provider_payment_ref`
+replace the Stripe-named columns. The old ones are still written for Stripe and
+read by nothing — one release of overlap so a rollback of
+`shop_order_payment_provider` does not strand rows, then a migration drops them.
 
 ### These are services, not downloads
 
