@@ -253,6 +253,32 @@ return [
     /* --- Kauf eigener Leistungen ------------------------------------------- */
     [
         'method' => 'POST',
+        'pattern' => '/shop/quote',
+        'summary' => 'Warenkorb bepreisen, ohne zu bestellen',
+        'description' => 'Die Warenkorbseite braucht die Summe, die gleich abgebucht wird, und '
+            . 'darin stecken die Versandkosten — abhaengig vom Inhalt, von der '
+            . 'Versandkostenfreigrenze und von einer Aufteilung der Steuer auf die Steuersaetze '
+            . 'der Ware. Das laesst sich im Browser aus dem Katalog nicht berechnen, und ein '
+            . 'Warenkorb, der eine andere Zahl zeigt als die Kasse, ist schlimmer als einer, der '
+            . 'gar keine zeigt. Geld wird deshalb an genau einer Stelle berechnet, und das hier '
+            . 'ist ein Lesezugriff darauf: nichts wird geschrieben, nichts reserviert, danach '
+            . 'existiert keine Bestellung. Antwortet ausserdem, welche Widerrufsbloecke die Kasse '
+            . 'zeigen muss und ob ueberhaupt eine Zustimmung einzuholen ist.',
+        'auth' => 'public',
+        'tag' => 'Kauf',
+        'params' => [
+            ['name' => 'items', 'in' => 'body', 'description' => '`[{slug, quantity}]`. Ein '
+                . 'einzelnes `slug` wird weiterhin akzeptiert.'],
+            ['name' => 'lang', 'in' => 'body', 'description' => '`de` | `en`.'],
+        ],
+        'responses' => [
+            ['status' => 200, 'description' => '`{lines, shipping, netCents, taxCents, grossCents, '
+                . 'withdrawalRegime, withdrawalConsentRequired, addressRequired}`'],
+            ['status' => 404, 'description' => 'Mindestens eine Position ist nicht verkaeuflich.'],
+        ],
+    ],
+    [
+        'method' => 'POST',
         'pattern' => '/shop/checkout',
         'summary' => 'Zahlung starten (Anbieter waehlbar)',
         'description' => 'Vom Browser des Besuchers aufgerufen, deshalb NICHT site-key-'

@@ -56,6 +56,9 @@ export default function ShopSettings() {
   const [weroKeyInput, setWeroKeyInput] = useState("");
   const [weroHookInput, setWeroHookInput] = useState("");
 
+  const [shipFlat, setShipFlat] = useState("");
+  const [shipFreeFrom, setShipFreeFrom] = useState("");
+
   const load = async () => {
     try {
       const res = await apiFetch(NS);
@@ -83,6 +86,8 @@ export default function ShopSettings() {
       setWeroKeyState(map.get("wero_api_key") ?? null);
       setWeroHookState(map.get("wero_webhook_secret") ?? null);
       setWeroPsp(map.get("wero_psp")?.value ?? "");
+      setShipFlat(map.get("shipping_flat_cents")?.value ?? "");
+      setShipFreeFrom(map.get("shipping_free_from_cents")?.value ?? "");
       setError(null);
     } catch {
       setError("Keine Verbindung zur API.");
@@ -118,6 +123,12 @@ export default function ShopSettings() {
         { key: "wero_psp", secret: false, value: weroPsp.trim() },
         { key: "wero_api_key", secret: true, value: weroKeyInput.trim() },
         { key: "wero_webhook_secret", secret: true, value: weroHookInput.trim() },
+        // Cents, as a string, because that is what the settings store holds —
+        // and cents rather than euros because every price in this package is an
+        // integer number of them. A euro field here would be the one place a
+        // float gets into the arithmetic.
+        { key: "shipping_flat_cents", secret: false, value: shipFlat.trim() },
+        { key: "shipping_free_from_cents", secret: false, value: shipFreeFrom.trim() },
       ];
       const res = await apiFetch(NS, {
         method: "PUT",
@@ -333,6 +344,39 @@ export default function ShopSettings() {
             value={weroHookInput}
             onChange={(e) => setWeroHookInput(e.target.value)}
             placeholder="leer lassen = unverändert"
+          />
+        </label>
+      </div>
+
+      <h3>Versand</h3>
+      <div className="tds-alert tds-alert--info">
+        Gilt nur für Bestellungen mit körperlicher Ware; ein Warenkorb aus
+        reinen Leistungen wird nie mit Versand belastet und fragt auch keine
+        Lieferanschrift ab. Beträge in <strong>Cent</strong>, netto — die Steuer
+        kommt oben drauf, und zwar mit dem Satz der gelieferten Ware, bei
+        gemischten Sätzen anteilig aufgeteilt (Abschn. 3.10 UStAE). 0 als
+        Pauschale heißt versandkostenfrei.
+      </div>
+
+      <div className="tds-field-row">
+        <label>
+          Pauschale (Cent, netto)
+          <input
+            className="field-boxed"
+            inputMode="numeric"
+            value={shipFlat}
+            onChange={(e) => setShipFlat(e.target.value)}
+            placeholder="495"
+          />
+        </label>
+        <label>
+          Versandfrei ab (Cent, netto)
+          <input
+            className="field-boxed"
+            inputMode="numeric"
+            value={shipFreeFrom}
+            onChange={(e) => setShipFreeFrom(e.target.value)}
+            placeholder="0 = keine Grenze"
           />
         </label>
       </div>

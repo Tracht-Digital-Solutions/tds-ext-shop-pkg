@@ -9,8 +9,8 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
 use Tds\Ext\Shop\Domain\ClickRepository;
-use Tds\Ext\Shop\Domain\PlacementRepository;
 use Tds\Ext\Shop\Domain\OrderRepository;
+use Tds\Ext\Shop\Domain\PlacementRepository;
 use Tds\Ext\Shop\Domain\ProductRepository;
 use Tds\Ext\Shop\Domain\SyncQueueRepository;
 use Tds\Ext\Shop\Payment\PaymentEvent;
@@ -27,7 +27,9 @@ use Tds\Ext\Shop\Service\OfferSync;
 use Tds\Ext\Shop\Service\PaApiException;
 use Tds\Ext\Shop\Service\StripeClient;
 use Tds\Ext\Shop\Support\PaApiSigner;
+use Tds\Ext\Shop\Support\Shipping;
 use Tds\Ext\Shop\Support\SyncTicker;
+use Tds\Ext\Shop\Support\Withdrawal;
 use Tds\Frontend\Contract\AbstractModule;
 use Tds\Frontend\Contract\ApiDocSource;
 use Tds\Frontend\Contract\PermissionDef;
@@ -617,28 +619,107 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
          * giving up (§ 356 Abs. 4 BGB). Without that, TDS has performed the
          * service and the customer may still withdraw.
          */
+        /**
+         * Price a basket without ordering anything.
+         *
+         * The basket page needs the total it is about to charge, and the total
+         * includes delivery — which depends on what is in the basket, on the
+         * free-shipping threshold, and on an apportionment of tax across the
+         * goods' VAT rates. None of that can be computed in a browser from the
+         * catalogue alone, and a basket that shows a different number than the
+         * checkout is worse than one that shows none.
+         *
+         * So money is computed in exactly one place, and this is a read of it.
+         * Nothing is written, nothing is reserved and no order exists
+         * afterwards.
+         */
+        $app->post('/shop/quote', function (Request $req, Response $res) use ($c): Response {
+            $body = (array) ($req->getParsedBody() ?? []);
+            $basket = self::resolveBasket($c, $body);
+            if ($basket === null) {
+                return self::json($res, ['error' => 'Dieses Angebot gibt es nicht.'], 404);
+            }
+
+            return self::json($res, [
+                'lines' => array_map(static fn (array $l): array => [
+                    'slug' => (string) $l['slug'],
+                    'title' => (string) $l['title'],
+                    'quantity' => (int) ($l['quantity'] ?? 1),
+                    'netCents' => (int) $l['line_net'],
+                    'taxCents' => (int) $l['line_tax'],
+                    'grossCents' => (int) $l['line_gross'],
+                    'requiresShipping' => (bool) ($l['requires_shipping'] ?? false),
+                ], $basket['totals']['lines']),
+                'shipping' => [
+                    'netCents' => $basket['shipping']['net'],
+                    'taxCents' => $basket['shipping']['tax'],
+                    'grossCents' => $basket['shipping']['gross'],
+                    'required' => $basket['hasPhysical'],
+                    'freeFromCents' => $basket['rate']->freeFromCents(),
+                ],
+                'netCents' => $basket['totals']['net'],
+                'taxCents' => $basket['totals']['tax'],
+                'grossCents' => $basket['totals']['gross'],
+                'currency' => (string) ($basket['lines'][0]['currency'] ?? 'EUR'),
+                // Which withdrawal blocks the checkout has to show, and whether
+                // it has to ask for the early-performance consent at all.
+                'withdrawalRegime' => $basket['regime'],
+                'withdrawalConsentRequired' => Withdrawal::requiresConsent($basket['regime']),
+                'addressRequired' => $basket['hasPhysical'],
+            ]);
+        });
+
         $app->post('/shop/checkout', function (Request $req, Response $res) use ($c): Response {
             $body = (array) ($req->getParsedBody() ?? []);
-            $slug = trim((string) ($body['slug'] ?? ''));
             $email = trim((string) ($body['email'] ?? ''));
             $country = strtoupper(trim((string) ($body['country'] ?? 'DE')));
 
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 return self::json($res, ['error' => 'Bitte eine gültige E-Mail-Adresse angeben.'], 422);
             }
-            if (($body['withdrawalConsent'] ?? false) !== true) {
+            // Germany only, checked HERE rather than at the provider so the
+            // refusal can be explained. Selling an electronically supplied
+            // service to a consumer elsewhere in the EU moves the place of
+            // supply to their country and eventually means OSS registration —
+            // an obligation the shop must not acquire by accident.
+            if (!in_array($country, self::allowedCountries(), true)) {
+                return self::json($res, [
+                    'error' => 'Wir liefern derzeit nur nach Deutschland.',
+                ], 422);
+            }
+
+            $basket = self::resolveBasket($c, $body);
+            if ($basket === null) {
+                return self::json($res, ['error' => 'Dieses Angebot gibt es nicht.'], 404);
+            }
+
+            /**
+             * The withdrawal check depends on WHAT is in the basket.
+             *
+             * A basket of goods needs no consent at all — the 14-day right is
+             * not the customer's to give up, and demanding a tick for it would
+             * be a consent with no legal object. A basket containing a service
+             * does need one: without the express request to begin early plus
+             * the acknowledgement of what that costs, TDS performs the service
+             * and the customer may still withdraw (§ 356 Abs. 4 BGB).
+             *
+             * So this used to be an unconditional requirement and is now a
+             * conditional one. Demanding it always was not the safe direction —
+             * it was the wrong question asked of half the customers.
+             */
+            if (Withdrawal::requiresConsent($basket['regime']) && ($body['withdrawalConsent'] ?? false) !== true) {
                 return self::json($res, [
                     'error' => 'Ohne die Bestätigung zum Widerrufsrecht kann nicht bestellt werden.',
                 ], 422);
             }
-            // Germany only, checked HERE rather than at Stripe so the refusal
-            // can be explained. Selling an electronically supplied service to a
-            // consumer elsewhere in the EU moves the place of supply to their
-            // country and eventually means OSS registration — an obligation the
-            // shop must not acquire by accident.
-            if (!in_array($country, self::allowedCountries(), true)) {
+
+            // Something to deliver means somewhere to deliver it. Checked on the
+            // server because the address is part of what was ordered, not a
+            // convenience of the form.
+            $address = self::deliveryAddress($body, $country);
+            if ($basket['hasPhysical'] && $address === null) {
                 return self::json($res, [
-                    'error' => 'Wir verkaufen diese Leistung derzeit nur nach Deutschland.',
+                    'error' => 'Für den Versand brauchen wir eine vollständige Lieferanschrift.',
                 ], 422);
             }
 
@@ -654,31 +735,43 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
             }
 
             $orders = $c->get(OrderRepository::class);
-            $offer = $orders->sellable($slug, self::lang($body['lang'] ?? null));
-            if ($offer === null) {
-                return self::json($res, ['error' => 'Dieses Angebot gibt es nicht.'], 404);
-            }
+            $withdrawalText = trim((string) ($body['withdrawalText'] ?? ''))
+                ?: Withdrawal::defaultText($basket['regime']);
 
-            $withdrawalText = trim((string) ($body['withdrawalText'] ?? '')) ?: self::WITHDRAWAL_TEXT;
-            $order = $orders->open(
-                $offer,
+            $order = $orders->openCart(
+                $basket['lines'],
                 $email,
                 trim((string) ($body['name'] ?? '')) ?: null,
                 $withdrawalText,
                 $country,
+                $basket['shipping'],
+                $basket['hasPhysical'] ? $address : null,
             );
-
             $base = self::shopBaseUrl();
+            $first = $basket['lines'][0];
+            // One line on the provider's page: its name, or the first item and
+            // a count. A provider that shows "Ein Paket" for a basket of four
+            // is not describing the purchase, and PayPal in particular puts
+            // this on the buyer's statement.
+            $description = count($basket['lines']) === 1
+                ? (string) $first['title']
+                : sprintf('%s + %d weitere', (string) $first['title'], count($basket['lines']) - 1);
+
             try {
                 $handoff = $provider->start(new PaymentRequest(
                     $order['orderNo'],
                     $order['token'],
-                    (string) $offer['title'],
+                    $description,
                     $order['gross'],
-                    (string) ($offer['currency'] ?? 'EUR'),
+                    (string) ($first['currency'] ?? 'EUR'),
                     $email,
                     "{$base}/bestellung/{$order['token']}",
-                    "{$base}/produkt/{$offer['slug']}",
+                    // Cancelling returns to the basket now, not to a product —
+                    // with several lines there is no single product to go back
+                    // to, and the basket is where the decision was made.
+                    count($basket['lines']) === 1
+                        ? "{$base}/produkt/{$first['slug']}"
+                        : "{$base}/warenkorb",
                 ));
             } catch (PaymentNotConfigured) {
                 // Between `usable()` above and here somebody cleared a secret.
@@ -826,6 +919,117 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
         });
     }
 
+
+    /**
+     * Turn a posted basket into priced lines, or null if any of it is unsellable.
+     *
+     * The single place where a basket becomes money. `/shop/quote` reads it and
+     * `/shop/checkout` acts on it, so the number shown on the basket page and
+     * the number charged cannot drift — which they would the moment there were
+     * two implementations, because only one of them would learn about the next
+     * change to the free-shipping threshold.
+     *
+     * Accepts the old single-`slug` body as well as `items[]`: the checkout page
+     * in the shop frontend still sends the former, and the two repositories
+     * release separately.
+     *
+     * @param  array<string,mixed> $body
+     * @return array{lines:list<array<string,mixed>>,totals:array<string,mixed>,shipping:array{net:int,tax:int,gross:int},hasPhysical:bool,hasDigital:bool,regime:string,rate:Shipping}|null
+     */
+    private static function resolveBasket(ContainerInterface $c, array $body): ?array
+    {
+        $items = is_array($body['items'] ?? null) ? $body['items'] : [];
+        if ($items === []) {
+            $slug = trim((string) ($body['slug'] ?? ''));
+            if ($slug === '') {
+                return null;
+            }
+            $items = [['slug' => $slug, 'quantity' => (int) ($body['quantity'] ?? 1)]];
+        }
+
+        $lines = $c->get(OrderRepository::class)->sellableMany($items, self::lang($body['lang'] ?? null));
+        if ($lines === null || $lines === []) {
+            return null;
+        }
+
+        $hasPhysical = false;
+        $hasDigital = false;
+        $physical = [];
+        foreach ($lines as $line) {
+            $qty = max(1, (int) ($line['quantity'] ?? 1));
+            if ((bool) ($line['requires_shipping'] ?? false)) {
+                $hasPhysical = true;
+                // Only the delivered lines pull the shipping tax toward their
+                // rate; a service in the same basket is not being delivered.
+                $physical[] = [
+                    'net' => (int) $line['net_cents'] * $qty,
+                    'rate' => (int) $line['vat_rate_bp'],
+                ];
+            } else {
+                $hasDigital = true;
+            }
+        }
+
+        $rate = self::shippingRate($c);
+        $shipping = $rate->forLines($physical);
+
+        return [
+            'lines' => $lines,
+            'totals' => OrderRepository::priceCart($lines, $shipping),
+            'shipping' => $shipping,
+            'hasPhysical' => $hasPhysical,
+            'hasDigital' => $hasDigital,
+            'regime' => Withdrawal::regime($hasDigital, $hasPhysical),
+            'rate' => $rate,
+        ];
+    }
+
+    /**
+     * What delivery costs here.
+     *
+     * Settings rather than constants, for the same reason as
+     * `SHOP_ALLOWED_COUNTRIES`: changing a shipping charge is a business
+     * decision, and one that should not need a release.
+     */
+    private static function shippingRate(ContainerInterface $c): Shipping
+    {
+        return new Shipping(
+            (int) self::setting($c, 'shipping_flat_cents', 'SHOP_SHIPPING_FLAT_CENTS', false),
+            (int) self::setting($c, 'shipping_free_from_cents', 'SHOP_SHIPPING_FREE_FROM_CENTS', false),
+        );
+    }
+
+    /**
+     * The delivery address, or null when it is not complete.
+     *
+     * All-or-nothing on purpose. A half-filled address is not a lesser address,
+     * it is a parcel that does not arrive — and storing the fragments would
+     * leave a row that looks like it was checked. `line2` is the one genuinely
+     * optional part.
+     *
+     * @param  array<string,mixed> $body
+     * @return array<string,string>|null
+     */
+    private static function deliveryAddress(array $body, string $fallbackCountry): ?array
+    {
+        $get = static fn (string $key): string => trim((string) ($body[$key] ?? ''));
+
+        $address = [
+            'name' => $get('shipName') ?: $get('name'),
+            'line1' => $get('shipLine1'),
+            'line2' => $get('shipLine2'),
+            'postcode' => $get('shipPostcode'),
+            'city' => $get('shipCity'),
+            'country' => strtoupper($get('shipCountry')) ?: $fallbackCountry,
+        ];
+
+        foreach (['name', 'line1', 'postcode', 'city', 'country'] as $required) {
+            if ($address[$required] === '') {
+                return null;
+            }
+        }
+        return $address;
+    }
     /**
      * Where the shop may sell.
      *

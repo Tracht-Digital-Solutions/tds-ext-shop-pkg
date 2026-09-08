@@ -35,15 +35,24 @@ const specifiers = [
 ];
 
 /**
- * The minor line both products caret-pin this package at (`^0.2.0`).
+ * The minor line both products caret-pin this package at (`^0.3.0`).
  *
- * Moved from `0.1` when the Amazon offer sync shipped. Moving it is a
- * deliberate act with a required order: **release the new minor first, then
- * widen the products' ranges.** Doing it the other way round leaves both panels
- * asking for a version that does not exist yet, and `--no-package-lock` means
- * there is no lockfile to fall back on — the install simply fails.
+ * Moved from `0.1` when the Amazon offer sync shipped, and from `0.2` when the
+ * payment abstraction did — three providers behind one interface, and a
+ * migration that renames the order's payment columns, is not something a
+ * consumer should pick up without noticing.
+ *
+ * Moving it is a deliberate act with a required order: **release the new minor
+ * first, then widen the products' ranges.** Doing it the other way round leaves
+ * both panels asking for a version that does not exist yet, and
+ * `--no-package-lock` means there is no lockfile to fall back on — the install
+ * simply fails.
+ *
+ * This test firing is the reminder that the second half is still owed. The
+ * consumers are `tds-customer-frontend`, `tds-admin-frontend` and
+ * `tds-core-frontend-api` (composer).
  */
-const PINNED_MINOR_LINE = "0.2";
+const PINNED_MINOR_LINE = "0.3";
 
 /** `@scope/name/pages/Index.astro` → `pages/Index.astro` */
 const subpath = (spec: string) => spec.slice(pkg.name.length + 1);

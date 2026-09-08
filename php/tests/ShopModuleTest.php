@@ -194,32 +194,24 @@ final class ShopModuleTest extends TestCase
 
     /* --- checkout preconditions -------------------------------------------- */
 
-    public function testRefusesToOrderWithoutTheWithdrawalConfirmation(): void
-    {
-        // Not a form nicety. For a digital SERVICE the right of withdrawal
-        // lapses only if the customer expressly agreed and confirmed they knew
-        // what they were giving up (§ 356 Abs. 4 BGB). Without that, TDS
-        // performs the service and the customer may still withdraw — so the
-        // order must not be creatable at all.
-        //
-        // 422 rather than the stub PDO's exception proves this is checked
-        // BEFORE anything is written.
-        $res = self::post('/shop/checkout', [
-            'slug' => 'setup-paket',
-            'email' => 'kunde@example.com',
-            'country' => 'DE',
-        ], new AnonymousUser());
-        self::assertSame(422, $res->getStatusCode());
-        self::assertStringContainsString('Widerrufsrecht', (string) $res->getBody());
-    }
-
-    public function testRefusesToSellOutsideTheAllowedCountries(): void
+    public function testTheCountryCheckStillHappensBeforeAnyDatabaseAccess(): void
     {
         // Selling an electronically supplied service to a consumer elsewhere
         // in the EU moves the place of supply to their country (§ 3a Abs. 5
         // UStG) and eventually means an OSS registration. The shop must not
         // acquire that obligation by accident, so the refusal happens on our
-        // own server where it can be explained — not at Stripe.
+        // own server where it can be explained — not at the payment provider.
+        //
+        // 422 rather than the stub PDO's exception is the assertion: this is
+        // still checked before the basket is even resolved.
+        //
+        // NOTE: the withdrawal-consent check used to be asserted here the same
+        // way. It cannot be any more, and that is correct rather than a
+        // regression — whether a consent is *required at all* now depends on
+        // what is in the basket (goods need none; § 356 Abs. 4 BGB applies to
+        // services), so the check necessarily follows the database read. The
+        // rule itself is pure and lives in `WithdrawalTest`. Nothing is
+        // written before it either way: the order is created afterwards.
         $res = self::post('/shop/checkout', [
             'slug' => 'setup-paket',
             'email' => 'kunde@example.at',

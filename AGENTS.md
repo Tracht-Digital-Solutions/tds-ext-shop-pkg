@@ -543,6 +543,62 @@ replace the Stripe-named columns. The old ones are still written for Stripe and
 read by nothing — one release of overlap so a rollback of
 `shop_order_payment_provider` does not strand rows, then a migration drops them.
 
+
+### Baskets, delivery and two rights of withdrawal
+
+`shop_order_item` was always a separate table with a `quantity`; the checkout
+simply never wrote more than one row. What arrived with physical goods is
+everything that follows from selling a *thing*.
+
+**Money is computed in one place.** `resolveBasket()` in `ShopModule` turns a
+posted basket into priced lines, and both `POST /shop/quote` (the basket page
+reads it) and `POST /shop/checkout` (acts on it) go through it. Two
+implementations would drift the moment one of them learned about a new
+free-shipping threshold and the other did not — and a basket page showing a
+different total than the checkout is worse than one showing none.
+
+**Prices still never come from the request.** `sellableMany()` takes the slug
+and the quantity and nothing else; every price, rate and title comes back out of
+the database. The quantity is capped at 99 per line, and not to be tidy: an
+unbounded quantity is an unbounded charge.
+
+**Rounding is per line, then summed.** Round the tax on the line, then add the
+lines up. Rounding once on the basket total gives a different answer, and it is
+the line figures that appear on the invoice.
+
+**Shipping tax is apportioned, not flat-rated.** Shipping is an ancillary
+service — it has no VAT rate of its own and takes the rate of the goods it
+delivers (Abschn. 3.10 UStAE). With one rate that is invisible; with a 19 % item
+and a 7 % item in one parcel the charge is split by net value and taxed in
+parts. `Support/Shipping.php` does it, the last bucket absorbs the rounding
+remainder so the parts sum back to the charge, and `ShippingTest` pins both.
+Charging a blanket 19 % is the common shortcut and is wrong in someone's favour
+depending on the mix.
+
+**There are two withdrawal rights and they are not the same right.** Goods:
+fourteen days from receipt (§ 355, § 356 Abs. 2 Nr. 1 BGB), and nothing is asked
+of the customer — the right is not theirs to give up, so a tick box for it is a
+consent with no legal object. Services: the right lapses on full performance,
+but only against an express request to begin early plus an acknowledgement of
+what that costs (§ 356 Abs. 4 BGB). A mixed basket needs both blocks shown and
+the consent for the service half only.
+
+That is why the consent check is now **conditional** and therefore happens after
+the basket is resolved. It used to be unconditional and checked before any
+database access, and `ShopModuleTest` asserted exactly that. Demanding it always
+was not the safe direction — it was the wrong question asked of half the
+customers. The rule is pure and lives in `WithdrawalTest`; nothing is written
+before the check either way.
+
+**The address is on the order, all-or-nothing.** This is a guest checkout, so
+there is no customer record to hang it on — it is a fact about this order,
+frozen like the item titles beside it. A half-filled address is not a lesser
+address, it is a parcel that does not arrive, so an incomplete one is refused
+rather than stored.
+
+`shop_order_item.requires_shipping` is a snapshot, like the title and the price:
+whether *this* line was delivered decides which regime applied to it, and
+re-deriving it from the catalogue years later would read today's answer.
 ### These are services, not downloads
 
 Nothing is delivered automatically, and there is no file, no signed URL and no
