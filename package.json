@@ -1,6 +1,6 @@
 {
   "name": "@tracht-digital-solutions/tds-ext-shop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "TDShop — Produktkatalog, Affiliate-Angebote, Platzierungen und Bestellungen als Panel-Extension.",
   "license": "UNLICENSED",
   "private": false,
