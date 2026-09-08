@@ -10,11 +10,15 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
 use Tds\Ext\Shop\Domain\ClickRepository;
 use Tds\Ext\Shop\Domain\PlacementRepository;
+use Tds\Ext\Shop\Domain\OrderRepository;
 use Tds\Ext\Shop\Domain\ProductRepository;
 use Tds\Ext\Shop\Domain\SyncQueueRepository;
 use Tds\Ext\Shop\Service\AmazonPaApiClient;
 use Tds\Ext\Shop\Service\OfferSync;
 use Tds\Ext\Shop\Service\PaApiException;
+use Tds\Ext\Shop\Service\StripeClient;
+use Tds\Ext\Shop\Service\StripeException;
+use Tds\Ext\Shop\Service\WebhookVerifier;
 use Tds\Ext\Shop\Support\PaApiSigner;
 use Tds\Ext\Shop\Support\SyncTicker;
 use Tds\Frontend\Contract\AbstractModule;
@@ -111,9 +115,17 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
             $c->get(AmazonPaApiClient::class),
         ));
 
+        $c?->set(OrderRepository::class, static fn ($c) => new OrderRepository($c->get(PDO::class)));
+
+        $c?->set(StripeClient::class, static function ($c): ?StripeClient {
+            $key = self::stripeSetting($c, 'stripe_secret_key', 'SHOP_STRIPE_SECRET_KEY', true);
+            return $key === '' ? null : new StripeClient($key);
+        });
+
         $this->registerPublic($app, $c);
         $this->registerAdmin($app, $c);
         $this->registerSync($app, $c);
+        $this->registerCheckout($app, $c);
     }
 
     /**
@@ -531,6 +543,226 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
                 );
             }
         });
+    }
+
+    /* --- checkout --------------------------------------------------------- */
+
+    /**
+     * Selling TDS's own digital service packages.
+     *
+     * These routes are called by a **visitor's browser**, so none of them is
+     * site-key protected — a key that ships in a client bundle is not a key —
+     * and the Stripe webhook is deliberately mounted outside `/content/shop`,
+     * because `SiteKeyMiddleware::matches()` compares segment-wise and Stripe
+     * holds no key at all.
+     */
+    private function registerCheckout(App $app, ?ContainerInterface $c): void
+    {
+        /**
+         * Create a Checkout Session.
+         *
+         * The price is read from the database, never from the request. A
+         * posted price is a price the customer chose.
+         *
+         * The withdrawal confirmation is a hard precondition, not a field: for
+         * a digital SERVICE the right of withdrawal only lapses if the
+         * customer expressly agreed and confirmed they knew what they were
+         * giving up (§ 356 Abs. 4 BGB). Without that, TDS has performed the
+         * service and the customer may still withdraw.
+         */
+        $app->post('/shop/checkout', function (Request $req, Response $res) use ($c): Response {
+            $body = (array) ($req->getParsedBody() ?? []);
+            $slug = trim((string) ($body['slug'] ?? ''));
+            $email = trim((string) ($body['email'] ?? ''));
+            $country = strtoupper(trim((string) ($body['country'] ?? 'DE')));
+
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                return self::json($res, ['error' => 'Bitte eine gültige E-Mail-Adresse angeben.'], 422);
+            }
+            if (($body['withdrawalConsent'] ?? false) !== true) {
+                return self::json($res, [
+                    'error' => 'Ohne die Bestätigung zum Widerrufsrecht kann nicht bestellt werden.',
+                ], 422);
+            }
+            // Germany only, checked HERE rather than at Stripe so the refusal
+            // can be explained. Selling an electronically supplied service to a
+            // consumer elsewhere in the EU moves the place of supply to their
+            // country and eventually means OSS registration — an obligation the
+            // shop must not acquire by accident.
+            if (!in_array($country, self::allowedCountries(), true)) {
+                return self::json($res, [
+                    'error' => 'Wir verkaufen diese Leistung derzeit nur nach Deutschland.',
+                ], 422);
+            }
+
+            $stripe = $c->get(StripeClient::class);
+            if ($stripe === null || !$stripe->isConfigured()) {
+                return self::json($res, ['error' => 'Der Kauf ist derzeit nicht möglich.'], 503);
+            }
+
+            $orders = $c->get(OrderRepository::class);
+            $offer = $orders->sellable($slug, self::lang($body['lang'] ?? null));
+            if ($offer === null) {
+                return self::json($res, ['error' => 'Dieses Angebot gibt es nicht.'], 404);
+            }
+
+            $withdrawalText = trim((string) ($body['withdrawalText'] ?? '')) ?: self::WITHDRAWAL_TEXT;
+            $order = $orders->open(
+                $offer,
+                $email,
+                trim((string) ($body['name'] ?? '')) ?: null,
+                $withdrawalText,
+                $country,
+            );
+
+            $base = self::shopBaseUrl();
+            try {
+                $session = $stripe->createCheckoutSession(
+                    $order['orderNo'],
+                    (string) $offer['title'],
+                    $order['gross'],
+                    (string) ($offer['currency'] ?? 'EUR'),
+                    $email,
+                    "{$base}/bestellung/{$order['token']}",
+                    "{$base}/produkt/{$offer['slug']}",
+                    ['order_no' => $order['orderNo'], 'token' => $order['token']],
+                );
+            } catch (StripeException $e) {
+                return self::json($res, ['error' => 'Die Zahlung konnte nicht gestartet werden.'], 502);
+            }
+
+            $orders->attachSession($order['id'], $session['id']);
+            return self::json($res, ['url' => $session['url'], 'token' => $order['token']]);
+        });
+
+        /**
+         * Stripe's webhook.
+         *
+         * Outside `/content/shop` on purpose — a site-key prefix would reject
+         * Stripe, which holds no key. It authenticates by signature instead.
+         *
+         * The raw body is required: the signature covers the exact bytes, so a
+         * parsed-and-re-encoded payload will not verify.
+         */
+        $app->post('/shop/stripe/webhook', function (Request $req, Response $res) use ($c): Response {
+            $secret = self::stripeSetting($c, 'stripe_webhook_secret', 'SHOP_STRIPE_WEBHOOK_SECRET', true);
+            if ($secret === '') {
+                return self::json($res, ['error' => 'webhook secret not configured'], 503);
+            }
+            $payload = (string) $req->getBody();
+            if (!WebhookVerifier::verify($payload, $req->getHeaderLine('Stripe-Signature'), $secret)) {
+                return self::json($res, ['error' => 'Invalid signature'], 400);
+            }
+
+            try {
+                $event = json_decode($payload, true, 16, JSON_THROW_ON_ERROR);
+            } catch (\Throwable) {
+                return self::json($res, ['error' => 'Invalid payload'], 400);
+            }
+
+            $type = (string) ($event['type'] ?? '');
+            $object = (array) ($event['data']['object'] ?? []);
+            $orders = $c->get(OrderRepository::class);
+
+            if ($type === 'checkout.session.completed') {
+                $sessionId = (string) ($object['id'] ?? '');
+                $intent = isset($object['payment_intent']) ? (string) $object['payment_intent'] : null;
+                // markPaid() is idempotent by its WHERE clause: Stripe retries
+                // until it gets a 2xx, so this arrives more than once and must
+                // fulfil only the first time.
+                $orders->markPaid($sessionId, $intent);
+            } elseif ($type === 'charge.refunded') {
+                $orders->markRefunded((string) ($object['payment_intent'] ?? ''));
+            }
+
+            // 200 for an event we do not handle, too. A non-2xx makes Stripe
+            // retry it forever.
+            return self::json($res, ['received' => true]);
+        });
+
+        /** The customer's own order view. The token is the authorisation. */
+        $app->get('/shop/order/{token:[a-f0-9]{32}}', function (Request $req, Response $res, array $args) use ($c): Response {
+            $order = $c->get(OrderRepository::class)->byToken((string) $args['token']);
+            return $order === null
+                ? self::json($res, ['error' => 'Not found'], 404)
+                : self::json($res, $order);
+        });
+
+        /* --- panel ---------------------------------------------------------- */
+
+        $app->get('/shop/orders', function (Request $req, Response $res) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'shop:orders', $res)) !== null) {
+                return $deny;
+            }
+            return self::json($res, ['orders' => $c->get(OrderRepository::class)->recent()]);
+        });
+
+        $app->post('/shop/orders/{id:[0-9]+}/fulfil', function (Request $req, Response $res, array $args) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'shop:orders', $res)) !== null) {
+                return $deny;
+            }
+            $body = (array) ($req->getParsedBody() ?? []);
+            $done = $c->get(OrderRepository::class)->markFulfilled(
+                (int) $args['id'],
+                trim((string) ($body['note'] ?? '')) ?: null,
+            );
+            return $done
+                ? self::json($res, ['ok' => true])
+                : self::json($res, ['error' => 'Nicht bezahlt oder unbekannt.'], 409);
+        });
+    }
+
+    /**
+     * Where the shop may sell.
+     *
+     * A setting rather than a constant, because widening it is a business
+     * decision (and a tax one), not a code change — but the default is the
+     * cautious one.
+     *
+     * @return list<string>
+     */
+    private static function allowedCountries(): array
+    {
+        $raw = trim((string) (getenv('SHOP_ALLOWED_COUNTRIES') ?: 'DE'));
+        $out = [];
+        foreach (explode(',', $raw) as $code) {
+            $code = strtoupper(trim($code));
+            if (preg_match('/^[A-Z]{2}$/', $code)) {
+                $out[] = $code;
+            }
+        }
+        return $out === [] ? ['DE'] : $out;
+    }
+
+    /** The default withdrawal wording, used when the page does not send its own. */
+    private const WITHDRAWAL_TEXT = 'Ich verlange ausdrücklich, dass Sie vor Ende der '
+        . 'Widerrufsfrist mit der Leistung beginnen. Mir ist bekannt, dass ich mein '
+        . 'Widerrufsrecht mit vollständiger Erbringung der Leistung verliere.';
+
+    private static function shopBaseUrl(): string
+    {
+        $base = rtrim((string) (getenv('SHOP_PUBLIC_URL') ?: ''), '/');
+        return $base !== '' ? $base : 'https://shop.tracht-digital.de';
+    }
+
+    /** One Stripe setting, DB-first with an env fallback. */
+    private static function stripeSetting(
+        ContainerInterface $c,
+        string $key,
+        string $env,
+        bool $secret,
+    ): string {
+        try {
+            $store = $c->get(SettingsStore::class);
+            $value = $secret ? $store->getSecret(self::SETTINGS_NS, $key) : $store->get(self::SETTINGS_NS, $key);
+            $value = trim((string) ($value ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        } catch (\Throwable) {
+            // No store bound — env only, the pre-settings behaviour.
+        }
+        return trim((string) (getenv($env) ?: ''));
     }
 
     /* --- helpers ---------------------------------------------------------- */

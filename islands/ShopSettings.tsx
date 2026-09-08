@@ -39,6 +39,11 @@ export default function ShopSettings() {
   const [partnerTag, setPartnerTag] = useState("");
   const [marketplace, setMarketplace] = useState("www.amazon.de");
 
+  const [stripeKeyState, setStripeKeyState] = useState<Masked | null>(null);
+  const [stripeHookState, setStripeHookState] = useState<Masked | null>(null);
+  const [stripeKeyInput, setStripeKeyInput] = useState("");
+  const [stripeHookInput, setStripeHookInput] = useState("");
+
   const load = async () => {
     try {
       const res = await apiFetch(NS);
@@ -57,6 +62,8 @@ export default function ShopSettings() {
       setSecretState(map.get("amazon_secret_key") ?? null);
       setPartnerTag(map.get("amazon_partner_tag")?.value ?? "");
       setMarketplace(map.get("amazon_marketplace")?.value ?? "www.amazon.de");
+      setStripeKeyState(map.get("stripe_secret_key") ?? null);
+      setStripeHookState(map.get("stripe_webhook_secret") ?? null);
       setError(null);
     } catch {
       setError("Keine Verbindung zur API.");
@@ -80,6 +87,8 @@ export default function ShopSettings() {
         { key: "amazon_secret_key", secret: true, value: secretInput.trim() },
         { key: "amazon_partner_tag", secret: false, value: partnerTag.trim() },
         { key: "amazon_marketplace", secret: false, value: marketplace.trim() },
+        { key: "stripe_secret_key", secret: true, value: stripeKeyInput.trim() },
+        { key: "stripe_webhook_secret", secret: true, value: stripeHookInput.trim() },
       ];
       const res = await apiFetch(NS, {
         method: "PUT",
@@ -92,6 +101,8 @@ export default function ShopSettings() {
       }
       setAccessInput("");
       setSecretInput("");
+      setStripeKeyInput("");
+      setStripeHookInput("");
       toast.success("Gespeichert.");
       await load();
     } catch {
@@ -158,6 +169,39 @@ export default function ShopSettings() {
             className="field-boxed"
             value={marketplace}
             onChange={(e) => setMarketplace(e.target.value)}
+          />
+        </label>
+      </div>
+
+      <h3>Stripe</h3>
+      <div className="tds-alert tds-alert--info">
+        Für den Verkauf eigener Leistungen. Ohne diese beiden Schlüssel ist der
+        Kauf aus — der Katalog bleibt davon unberührt. Das Webhook-Secret ist
+        kein Nice-to-have: fehlt es, weist der Webhook <strong>jede</strong>{" "}
+        Anfrage ab, statt irgendeinen POST als Zahlung zu akzeptieren.
+      </div>
+
+      <div className="tds-field-row">
+        <label>
+          Secret Key <em>({hint(stripeKeyState)})</em>
+          <input
+            className="field-boxed"
+            type="password"
+            autoComplete="off"
+            value={stripeKeyInput}
+            onChange={(e) => setStripeKeyInput(e.target.value)}
+            placeholder="leer lassen = unverändert"
+          />
+        </label>
+        <label>
+          Webhook-Secret <em>({hint(stripeHookState)})</em>
+          <input
+            className="field-boxed"
+            type="password"
+            autoComplete="off"
+            value={stripeHookInput}
+            onChange={(e) => setStripeHookInput(e.target.value)}
+            placeholder="whsec_…"
           />
         </label>
       </div>

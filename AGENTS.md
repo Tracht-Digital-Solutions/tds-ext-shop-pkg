@@ -438,3 +438,67 @@ signature surfaces in production as `IncompleteSignatureException` from a
 server that will not say which of the four SigV4 steps it disagreed with.
 `PaApiSignerTest` pins the canonical request, the scope, the key derivation and
 the resulting signature.
+
+## The checkout (own digital service packages)
+
+### Three legal requirements that shaped the code
+
+**§ 356 Abs. 4 BGB — the withdrawal confirmation.** For a digital *service* the
+right of withdrawal lapses on full performance only if the customer expressly
+agreed beforehand and confirmed they knew what they were giving up. So
+`POST /shop/checkout` **refuses** without `withdrawalConsent: true`, and
+`shop_order.withdrawal_consent_text` stores the **wording** rather than a flag —
+what has to be provable later is which sentence they agreed to, and that
+sentence will be edited over the years. A boolean would leave every past order
+pointing at today's text.
+
+**§ 312j Abs. 3 BGB — the order button.** It must read "Zahlungspflichtig
+bestellen", with the mandatory details immediately above it. Stripe's hosted
+button says "Bezahlen". So the compliant order is: **our** `/kasse` page carries
+the details, the confirmation and the correctly-labelled button; pressing it
+creates the session, and Stripe is only the payment step that follows. Sending a
+visitor straight to Stripe skips the declaration.
+
+**§ 3a Abs. 5 UStG — where we may sell.** An electronically supplied service to
+a consumer elsewhere in the EU shifts the place of supply to their country and
+eventually means an OSS registration. `SHOP_ALLOWED_COUNTRIES` defaults to `DE`
+and the check happens on **our** server, before Stripe, so the refusal can be
+explained.
+
+### Money
+
+Integer cents throughout, and `vat_rate_bp` in basis points (1900 = 19 %). A
+percentage as a float is how rounding errors reach an invoice.
+
+`OrderRepository::price()` rounds **the tax**, then adds. Computing a gross
+first and deriving the tax back out of it loses a cent on roughly a third of
+amounts — and it is the net figure a VAT return is built from.
+
+Every amount is frozen into the order row at purchase and never recomputed. A
+receipt must still show what was actually charged after a price or rate change.
+
+**The price is read from the database, never from the request.** A posted price
+is a price the customer chose.
+
+### The webhook
+
+Mounted at `/shop/stripe/webhook`, deliberately **outside** `/content/shop`:
+`SiteKeyMiddleware::matches()` compares segment-wise, and Stripe holds no site
+key, so under the prefix every delivery would be rejected. It authenticates by
+signature over the **raw** body — a parsed-and-re-encoded payload will not
+verify.
+
+`markPaid()` is idempotent through its `WHERE status = 'pending'` clause,
+because Stripe retries until it gets a 2xx and a second delivery must not
+fulfil twice. An unhandled event type also answers 200; anything else makes
+Stripe retry it forever.
+
+A missing webhook secret answers **503**, not 200. Failing open here would mean
+a host that forgot to configure it accepts any POST as payment.
+
+### These are services, not downloads
+
+Nothing is delivered automatically, and there is no file, no signed URL and no
+download counter anywhere in this package. A paid order sits in
+`/shop/bestellungen` until somebody does the work and marks it done — which is
+why the widget counts *paid but unfulfilled* rather than *paid*.

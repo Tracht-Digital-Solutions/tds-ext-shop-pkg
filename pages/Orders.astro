@@ -1,0 +1,13 @@
+---
+// Orders for TDS's own digital service packages. These are services, not
+// downloads — nothing is delivered automatically, so this screen is a working
+// queue rather than a receipt archive.
+import OrderList from "../islands/OrderList.tsx";
+---
+
+<section class="tds-page">
+  <div class="tds-page__head">
+    <h1 class="tds-page__title">Bestellungen</h1>
+  </div>
+  <OrderList client:load />
+</section>

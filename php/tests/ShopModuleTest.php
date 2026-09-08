@@ -192,6 +192,83 @@ final class ShopModuleTest extends TestCase
         self::assertSame(403, $res->getStatusCode());
     }
 
+    /* --- checkout preconditions -------------------------------------------- */
+
+    public function testRefusesToOrderWithoutTheWithdrawalConfirmation(): void
+    {
+        // Not a form nicety. For a digital SERVICE the right of withdrawal
+        // lapses only if the customer expressly agreed and confirmed they knew
+        // what they were giving up (§ 356 Abs. 4 BGB). Without that, TDS
+        // performs the service and the customer may still withdraw — so the
+        // order must not be creatable at all.
+        //
+        // 422 rather than the stub PDO's exception proves this is checked
+        // BEFORE anything is written.
+        $res = self::post('/shop/checkout', [
+            'slug' => 'setup-paket',
+            'email' => 'kunde@example.com',
+            'country' => 'DE',
+        ], new AnonymousUser());
+        self::assertSame(422, $res->getStatusCode());
+        self::assertStringContainsString('Widerrufsrecht', (string) $res->getBody());
+    }
+
+    public function testRefusesToSellOutsideTheAllowedCountries(): void
+    {
+        // Selling an electronically supplied service to a consumer elsewhere
+        // in the EU moves the place of supply to their country (§ 3a Abs. 5
+        // UStG) and eventually means an OSS registration. The shop must not
+        // acquire that obligation by accident, so the refusal happens on our
+        // own server where it can be explained — not at Stripe.
+        $res = self::post('/shop/checkout', [
+            'slug' => 'setup-paket',
+            'email' => 'kunde@example.at',
+            'country' => 'AT',
+            'withdrawalConsent' => true,
+        ], new AnonymousUser());
+        self::assertSame(422, $res->getStatusCode());
+        self::assertStringContainsString('Deutschland', (string) $res->getBody());
+    }
+
+    public function testRefusesAnInvalidEmailBeforeTouchingAnything(): void
+    {
+        $res = self::post('/shop/checkout', [
+            'slug' => 'setup-paket',
+            'email' => 'keine-adresse',
+            'withdrawalConsent' => true,
+        ], new AnonymousUser());
+        self::assertSame(422, $res->getStatusCode());
+    }
+
+    public function testTheStripeWebhookRejectsAnUnsignedRequest(): void
+    {
+        // Without a configured secret this answers 503 — fail closed. A host
+        // that forgot to set it must not accept any POST as payment.
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('POST', '/shop/stripe/webhook');
+        $res = self::app()->handle($request);
+        self::assertContains($res->getStatusCode(), [400, 503]);
+        self::assertNotSame(200, $res->getStatusCode());
+    }
+
+    public function testTheStripeWebhookIsNotUnderTheSiteKeyPrefix(): void
+    {
+        // Stripe holds no site key, so a webhook under `/content/shop` would be
+        // rejected outright by SiteKeyMiddleware — which compares segment-wise.
+        $prefix = (new ShopModule())->siteKeyRoutes()[0];
+        $path = '/shop/stripe/webhook';
+        self::assertFalse($path === $prefix || str_starts_with($path . '/', $prefix . '/'));
+    }
+
+    public function testOrderRoutesForStaffAreGated(): void
+    {
+        self::assertSame(401, self::call(self::app(), 'GET', '/shop/orders')->getStatusCode());
+        self::assertSame(
+            403,
+            self::call(self::app(new FakeUser(['shop:read'])), 'GET', '/shop/orders')->getStatusCode(),
+        );
+    }
+
     /* --- site-key surface -------------------------------------------------- */
 
     public function testSiteKeyPrefixCoversPublicReadsAndNothingElse(): void

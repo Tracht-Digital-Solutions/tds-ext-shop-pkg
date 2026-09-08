@@ -250,6 +250,101 @@ return [
             ['status' => 404, 'description' => 'Kein aktiver Werbeplatz unter diesem Schlüssel.'],
         ],
     ],
+    /* --- Kauf eigener Leistungen ------------------------------------------- */
+    [
+        'method' => 'POST',
+        'pattern' => '/shop/checkout',
+        'summary' => 'Stripe-Checkout-Session anlegen',
+        'description' => 'Vom Browser des Besuchers aufgerufen, deshalb NICHT site-key-'
+            . 'geschuetzt. Der Preis wird aus der Datenbank gelesen, nie aus der Anfrage — ein '
+            . 'gesendeter Preis ist ein Preis, den der Kunde gewaehlt hat. Zwei Ablehnungen sind '
+            . 'keine Formalitaeten: ohne Widerrufsbestaetigung (§ 356 Abs. 4 BGB) erlischt das '
+            . 'Widerrufsrecht nicht, und ausserhalb der erlaubten Laender entstuende eine '
+            . 'OSS-Pflicht (§ 3a Abs. 5 UStG). Der Bestellknopf mit "Zahlungspflichtig '
+            . 'bestellen" steht auf UNSERER Seite (§ 312j Abs. 3 BGB) — Stripe ist nur der '
+            . 'Zahlungsschritt danach.',
+        'auth' => 'public',
+        'tag' => 'Kauf',
+        'params' => [
+            ['name' => 'slug', 'in' => 'body', 'description' => 'Produkt-Slug.'],
+            ['name' => 'email', 'in' => 'body', 'description' => 'Pflicht, wird validiert.'],
+            ['name' => 'name', 'in' => 'body', 'description' => 'Optional.'],
+            ['name' => 'country', 'in' => 'body', 'description' => 'ISO-2, Vorgabe `DE`.'],
+            ['name' => 'withdrawalConsent', 'in' => 'body', 'description' => 'Muss `true` sein.'],
+            ['name' => 'withdrawalText', 'in' => 'body', 'description' => 'Der exakt angezeigte '
+                . 'Wortlaut; wird in der Bestellung mitgespeichert, nicht nur referenziert.'],
+        ],
+        'responses' => [
+            ['status' => 200, 'description' => '`{url, token}` — `url` fuehrt zu Stripe.'],
+            ['status' => 404, 'description' => 'Kein verkaeufliches Angebot unter diesem Slug.'],
+            ['status' => 422, 'description' => 'E-Mail, Widerrufsbestaetigung oder Land.'],
+            ['status' => 502, 'description' => 'Stripe hat die Session abgelehnt.'],
+            ['status' => 503, 'description' => 'Stripe ist nicht konfiguriert.'],
+        ],
+    ],
+    [
+        'method' => 'POST',
+        'pattern' => '/shop/stripe/webhook',
+        'summary' => 'Stripe-Webhook (signaturgeprueft)',
+        'description' => 'Bewusst AUSSERHALB von `/content/shop`: Stripe kennt keinen Site-Key, '
+            . 'und SiteKeyMiddleware vergleicht segmentweise — unter dem Praefix wuerde jeder '
+            . 'Aufruf abgewiesen. Authentifiziert wird ueber die Signatur ueber den ROHEN Body. '
+            . '`markPaid()` ist ueber seine WHERE-Klausel idempotent, weil Stripe bis zu einer '
+            . '2xx-Antwort wiederholt. Ein nicht behandeltes Ereignis wird ebenfalls mit 200 '
+            . 'quittiert, sonst wiederholt Stripe es endlos.',
+        'auth' => 'token',
+        'tag' => 'Kauf',
+        'params' => [
+            ['name' => 'Stripe-Signature', 'in' => 'header', 'description' => 'Von Stripe gesetzt.'],
+        ],
+        'responses' => [
+            ['status' => 200, 'description' => '`{received: true}`'],
+            ['status' => 400, 'description' => 'Signatur oder Payload ungueltig.'],
+            ['status' => 503, 'description' => 'Kein Webhook-Secret konfiguriert — faellt bewusst zu.'],
+        ],
+    ],
+    [
+        'method' => 'GET',
+        'pattern' => '/shop/order/{token:[a-f0-9]{32}}',
+        'summary' => 'Eigene Bestellung ansehen',
+        'description' => 'Das Token IST die Berechtigung — Gastkauf ohne Konto. Stripe-IDs und '
+            . 'interne Notizen werden aus der Antwort entfernt.',
+        'auth' => 'public',
+        'tag' => 'Kauf',
+        'params' => [['name' => 'token', 'in' => 'path', 'description' => '32 Hex-Zeichen.']],
+        'responses' => [
+            ['status' => 200, 'description' => 'Bestellung inkl. Positionen.'],
+            ['status' => 404, 'description' => 'Unbekanntes Token.'],
+        ],
+    ],
+    [
+        'method' => 'GET',
+        'pattern' => '/shop/orders',
+        'summary' => 'Bestellungen im Panel',
+        'auth' => 'permission',
+        'permission' => 'shop:orders',
+        'tag' => 'Kauf',
+        'responses' => [['status' => 200, 'description' => '`{orders: [...]}`']],
+    ],
+    [
+        'method' => 'POST',
+        'pattern' => '/shop/orders/{id:[0-9]+}/fulfil',
+        'summary' => 'Bestellung als erbracht markieren',
+        'description' => 'Diese Produkte sind LEISTUNGEN, keine Downloads — es gibt keine Datei '
+            . 'auszuliefern. Erbracht wird von Hand, und dieser Aufruf haelt fest, wann.',
+        'auth' => 'permission',
+        'permission' => 'shop:orders',
+        'tag' => 'Kauf',
+        'params' => [
+            ['name' => 'id', 'in' => 'path', 'description' => 'Bestell-ID.'],
+            ['name' => 'note', 'in' => 'body', 'description' => 'Interne Notiz, optional.'],
+        ],
+        'responses' => [
+            ['status' => 200, 'description' => '`{ok: true}`'],
+            ['status' => 409, 'description' => 'Nicht bezahlt oder unbekannt.'],
+        ],
+    ],
+
     /* --- Angebotsabgleich -------------------------------------------------- */
     [
         'method' => 'GET',

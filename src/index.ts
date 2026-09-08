@@ -11,11 +11,9 @@ import { defineExtension } from "@tracht-digital-solutions/tds-frontend-contract
  *
  * ### Scope of this version
  *
- * The catalogue, the placements that embed it in the journal and the portal,
- * the click counter, and the Amazon offer sync. The Stripe checkout
- * (`shop:orders`) is a later checkpoint — its permission is declared because
- * the backend module declares it, but nothing points at it yet. A menu item
- * leading to an empty screen teaches an operator to distrust the menu.
+ * Complete: the catalogue, the placements that embed it in the journal and the
+ * portal, the click counter, the Amazon offer sync, and the checkout for TDS's
+ * own digital service packages.
  *
  * ### Why `shop-picks` carries no permission
  *
@@ -93,6 +91,11 @@ export default defineExtension({
       pattern: "/shop/platzierungen",
       entrypoint: "@tracht-digital-solutions/tds-ext-shop/pages/Placements.astro",
       permission: "shop:write",
+    },
+    {
+      pattern: "/shop/bestellungen",
+      entrypoint: "@tracht-digital-solutions/tds-ext-shop/pages/Orders.astro",
+      permission: "shop:orders",
     },
   ],
   i18n: {

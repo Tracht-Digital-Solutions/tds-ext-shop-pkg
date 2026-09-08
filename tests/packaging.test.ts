@@ -34,8 +34,16 @@ const specifiers = [
   ...(manifest.settings ?? []).map((s) => s.island),
 ];
 
-/** The minor line the admin product caret-pins this package at (`^0.1.1`). */
-const PINNED_MINOR_LINE = "0.1";
+/**
+ * The minor line both products caret-pin this package at (`^0.2.0`).
+ *
+ * Moved from `0.1` when the Amazon offer sync shipped. Moving it is a
+ * deliberate act with a required order: **release the new minor first, then
+ * widen the products' ranges.** Doing it the other way round leaves both panels
+ * asking for a version that does not exist yet, and `--no-package-lock` means
+ * there is no lockfile to fall back on — the install simply fails.
+ */
+const PINNED_MINOR_LINE = "0.2";
 
 /** `@scope/name/pages/Index.astro` → `pages/Index.astro` */
 const subpath = (spec: string) => spec.slice(pkg.name.length + 1);
