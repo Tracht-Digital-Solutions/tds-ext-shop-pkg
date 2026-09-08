@@ -476,10 +476,26 @@ final class ProductRepository
         $out = [];
         foreach ($rows as $row) {
             $id = (int) $row['id'];
+            $slug = (string) $row['slug'];
+
+            // An own offer is bought here, not somewhere else, so its link goes
+            // to this site's checkout rather than through the click redirect.
+            // Done here because the checkout path needs the product's
+            // language-dependent slug, which the offer query does not see.
+            $offersForProduct = array_map(
+                function (array $offer) use ($slug, $lang): array {
+                    if ($offer['kind'] === 'own') {
+                        $offer['url'] = $this->checkoutUrl($slug, $lang);
+                    }
+                    return $offer;
+                },
+                $offers[$id] ?? [],
+            );
+
             $out[] = [
-                'slug' => (string) $row['slug'],
+                'slug' => $slug,
                 'lang' => $lang,
-                'url' => $this->productUrl((string) $row['slug'], $lang),
+                'url' => $this->productUrl($slug, $lang),
                 'title' => (string) $row['title'],
                 'teaser' => (string) ($row['teaser'] ?? ''),
                 'category' => (string) ($row['category'] ?? ''),
@@ -491,7 +507,7 @@ final class ProductRepository
                     ? (string) $row['meta_description'] : null,
                 'machineTranslated' => (bool) ($row['machine_translated'] ?? false),
                 'publishedAt' => self::iso($row['published_at'] ?? null),
-                'offers' => $offers[$id] ?? [],
+                'offers' => $offersForProduct,
             ];
         }
         return $out;
@@ -511,22 +527,44 @@ final class ProductRepository
     {
         $in = implode(',', array_fill(0, count($productIds), '?'));
         $stmt = $this->pdo->prepare(
-            'SELECT id, product_id, kind, network, merchant, url, price_cents, currency,'
-            . ' price_checked_at, availability, position'
-            . " FROM shop_offer WHERE disabled_at IS NULL AND product_id IN ($in)"
-            . ' ORDER BY product_id ASC, position ASC, id ASC',
+            'SELECT o.id, o.product_id, o.kind, o.network, o.merchant, o.url, o.price_cents,'
+            . ' o.currency, o.price_checked_at, o.availability, o.position,'
+            . ' s.net_cents, s.vat_rate_bp'
+            . ' FROM shop_offer o'
+            // Our own sale terms, when this offer is one of ours. LEFT so an
+            // affiliate offer still comes back.
+            . ' LEFT JOIN shop_own_product s ON s.offer_id = o.id'
+            . " WHERE o.disabled_at IS NULL AND o.product_id IN ($in)"
+            . ' ORDER BY o.product_id ASC, o.position ASC, o.id ASC',
         );
         $stmt->execute($productIds);
 
         $now = time();
         $out = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
-            $checkedAt = $row['price_checked_at'] !== null ? (string) $row['price_checked_at'] : null;
-            $price = PriceFreshness::publishablePrice(
-                $row['price_cents'] === null ? null : (int) $row['price_cents'],
-                $checkedAt,
-                $now,
-            );
+            $own = $row['net_cents'] !== null;
+
+            // For OUR OWN offer the sale terms are the single source of truth
+            // and the gross is derived from them. `shop_offer.price_cents`
+            // would otherwise be a second price for the same thing, and two
+            // prices for one product is a question of which one is charged.
+            //
+            // An own price is also never stale: it is ours to state, so it
+            // skips the freshness check entirely. The 24-hour rule is about
+            // quoting somebody else's price, not our own.
+            if ($own) {
+                $terms = OrderRepository::price((int) $row['net_cents'], (int) $row['vat_rate_bp']);
+                $price = $terms['gross'];
+                $checkedAt = null;
+            } else {
+                $checkedAt = $row['price_checked_at'] !== null ? (string) $row['price_checked_at'] : null;
+                $price = PriceFreshness::publishablePrice(
+                    $row['price_cents'] === null ? null : (int) $row['price_cents'],
+                    $checkedAt,
+                    $now,
+                );
+            }
+
             $out[(int) $row['product_id']][] = [
                 'id' => (int) $row['id'],
                 'kind' => (string) $row['kind'],
@@ -539,14 +577,24 @@ final class ProductRepository
                 // a tag then costs one UPDATE rather than a search-and-replace
                 // across three repositories. The real target is resolved by
                 // `offerTarget()` behind that redirect.
+                // The click redirect. An OWN offer's link is rewritten in
+                // `hydrate()` to point at its checkout — that is where the
+                // product's language-dependent slug is known; this query only
+                // sees offer rows.
                 'url' => $this->shopBaseUrl . '/go/' . (int) $row['id'],
                 'priceCents' => $price,
                 'currency' => (string) ($row['currency'] ?? 'EUR'),
                 // Cleared alongside the price. A timestamp left behind on a
-                // stripped price would read as "checked, and free".
-                'priceCheckedAt' => $price === null ? null : self::iso($checkedAt),
+                // stripped price would read as "checked, and free". An own
+                // price carries none because it never expires.
+                'priceCheckedAt' => $own ? null : ($price === null ? null : self::iso($checkedAt)),
                 'availability' => (string) ($row['availability'] ?? 'unknown'),
                 'position' => (int) ($row['position'] ?? 0),
+                // The VAT split, so a checkout page can show the mandatory
+                // breakdown without a second request. Null for an affiliate
+                // offer — somebody else's tax is not ours to state.
+                'netCents' => $own ? (int) $row['net_cents'] : null,
+                'vatRateBp' => $own ? (int) $row['vat_rate_bp'] : null,
             ];
         }
         return $out;
@@ -597,6 +645,13 @@ final class ProductRepository
     private function productUrl(string $slug, string $lang): string
     {
         $segment = $lang === 'en' ? '/en/product/' : '/produkt/';
+        return $this->shopBaseUrl . $segment . $slug;
+    }
+
+    /** Where our own offer is actually bought. */
+    private function checkoutUrl(string $slug, string $lang): string
+    {
+        $segment = $lang === 'en' ? '/en/checkout/' : '/kasse/';
         return $this->shopBaseUrl . $segment . $slug;
     }
 
