@@ -24,6 +24,8 @@ use Tds\Ext\Shop\Payment\WebhookNotVerified;
 use Tds\Ext\Shop\Payment\WeroProvider;
 use Tds\Ext\Shop\Service\AmazonPaApiClient;
 use Tds\Ext\Shop\Service\OfferSync;
+use Tds\Ext\Shop\Service\OrderInvoiceBuilder;
+use Tds\Ext\Shop\Service\OrderInvoicing;
 use Tds\Ext\Shop\Service\PaApiException;
 use Tds\Ext\Shop\Service\StripeClient;
 use Tds\Ext\Shop\Support\PaApiSigner;
@@ -125,6 +127,18 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
         ));
 
         $c?->set(OrderRepository::class, static fn ($c) => new OrderRepository($c->get(PDO::class)));
+
+        $c?->set(OrderInvoiceBuilder::class, static fn () => new OrderInvoiceBuilder());
+
+        // The container itself goes in, because the Lexware client lives in a
+        // package that may not be installed and is therefore resolved by name
+        // at call time — see OrderInvoicing. Not `$c->has()`: for a concrete
+        // class PHP-DI answers that out of autowiring and always says yes.
+        $c?->set(OrderInvoicing::class, static fn ($c) => new OrderInvoicing(
+            $c->get(OrderRepository::class),
+            $c->get(OrderInvoiceBuilder::class),
+            $c,
+        ));
 
         $c?->set(StripeClient::class, static function ($c): ?StripeClient {
             $key = self::setting($c, 'stripe_secret_key', 'SHOP_STRIPE_SECRET_KEY', true);
@@ -861,6 +875,36 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
                         $event->paymentRef,
                         $event->orderToken,
                     );
+
+                    /*
+                     * Invoice it — Lexware assigns the number and keeps the PDF.
+                     *
+                     * Deliberately OUTSIDE the `markPaid()` return value. That
+                     * returns true only for the delivery that flipped the row,
+                     * so gating on it would mean a Lexware outage during the
+                     * first delivery loses the invoice for good: every later
+                     * redelivery finds the order already paid and would skip.
+                     * Running on every PAID delivery instead lets a provider's
+                     * own retries heal a transient outage, and `invoice()` is
+                     * idempotent — it refuses an order that already has one.
+                     *
+                     * `OrderInvoicing` swallows its own failures by contract:
+                     * nothing it does may turn a taken payment into a non-2xx
+                     * and an endless redelivery. The try/catch is the second
+                     * floor, for the container itself failing to build it.
+                     */
+                    try {
+                        $orderId = $orders->idForPayment(
+                            $provider->id(),
+                            $event->reference,
+                            $event->orderToken,
+                        );
+                        if ($orderId !== null) {
+                            $c->get(OrderInvoicing::class)->invoice($orderId);
+                        }
+                    } catch (\Throwable $e) {
+                        error_log('[tds-shop] invoicing after payment failed: ' . $e->getMessage());
+                    }
                 } elseif ($event->kind === PaymentEvent::REFUNDED) {
                     $orders->markRefunded($provider->id(), $event->paymentRef, $event->orderToken);
                 }
@@ -916,6 +960,45 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
             return $done
                 ? self::json($res, ['ok' => true])
                 : self::json($res, ['error' => 'Nicht bezahlt oder unbekannt.'], 409);
+        });
+
+        /**
+         * Invoice an order through Lexware Office, over the API.
+         *
+         * The payment webhook already does this the moment an order is paid, so
+         * this is not the normal path — it is the one that exists because the
+         * normal path can fail. Lexware can be down for the minute a webhook
+         * arrives, and a taken payment must not be left without a document
+         * because of it.
+         *
+         * Idempotent, so calling it on an already-invoiced order is safe and
+         * answers with the invoice it already has rather than creating a
+         * second. That matters: two documents for one sale is a bookkeeping
+         * problem that is far harder to undo than a missing one.
+         *
+         * 409 for "not paid" or "attempts exhausted" — those are states, and a
+         * caller can tell them apart by the message. 503 for "Lexware is not
+         * set up here", because that is a deployment fact and not this order's
+         * fault.
+         */
+        $app->post('/shop/orders/{id:[0-9]+}/invoice', function (Request $req, Response $res, array $args) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'shop:orders', $res)) !== null) {
+                return $deny;
+            }
+            $result = $c->get(OrderInvoicing::class)->invoice((int) $args['id']);
+
+            if ($result['status'] === 'ok') {
+                return self::json($res, [
+                    'ok' => true,
+                    'invoiceNumber' => $result['number'],
+                    'lexwareId' => $result['id'],
+                ]);
+            }
+            if ($result['status'] === 'skipped') {
+                $unavailable = !$c->get(OrderInvoicing::class)->isAvailable();
+                return self::json($res, ['error' => $result['error']], $unavailable ? 503 : 409);
+            }
+            return self::json($res, ['error' => $result['error']], 409);
         });
     }
 

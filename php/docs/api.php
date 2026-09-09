@@ -418,6 +418,28 @@ return [
             ['status' => 409, 'description' => 'Nicht bezahlt oder unbekannt.'],
         ],
     ],
+    [
+        'method' => 'POST',
+        'pattern' => '/shop/orders/{id:[0-9]+}/invoice',
+        'summary' => 'Rechnung ueber Lexware Office erstellen',
+        'description' => 'Lexware ist das fuehrende System: es vergibt die Rechnungsnummer, '
+            . 'rendert das PDF und fuehrt das Archiv — hier wird nur festgehalten, was es '
+            . 'entschieden hat. Der Zahlungs-Webhook ruft dasselbe automatisch auf, sobald eine '
+            . 'Bestellung bezahlt ist; dieser Endpunkt existiert, weil der automatische Weg '
+            . 'ausfallen kann. Mehrfachaufrufe sind unschaedlich: eine bereits fakturierte '
+            . 'Bestellung liefert ihre vorhandene Rechnung zurueck statt eine zweite zu erzeugen.',
+        'auth' => 'permission',
+        'permission' => 'shop:orders',
+        'tag' => 'Kauf',
+        'params' => [
+            ['name' => 'id', 'in' => 'path', 'description' => 'Bestell-ID.'],
+        ],
+        'responses' => [
+            ['status' => 200, 'description' => '`{ok: true, invoiceNumber, lexwareId}`'],
+            ['status' => 409, 'description' => 'Nicht bezahlt, oder zu viele Fehlversuche.'],
+            ['status' => 503, 'description' => 'Lexware ist auf diesem Host nicht eingerichtet.'],
+        ],
+    ],
 
     /* --- Angebotsabgleich -------------------------------------------------- */
     [

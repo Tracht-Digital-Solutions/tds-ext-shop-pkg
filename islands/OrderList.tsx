@@ -18,6 +18,17 @@ interface Order {
   country: string;
   items: string | null;
   fulfilled_at: string | null;
+  /**
+   * What Lexware Office made of this order.
+   *
+   * Read-only here, and deliberately so: the payment webhook invoices an order
+   * the moment it is paid, and Lexware — not this panel — assigns the number.
+   * There is no button, because a second way to create an invoice is a second
+   * way to create two.
+   */
+  invoice_status: "none" | "pending" | "ok" | "failed" | null;
+  invoice_number: string | null;
+  invoice_error: string | null;
   withdrawal_consent_at: string | null;
   withdrawal_consent_text: string | null;
   created_at: string;
@@ -167,6 +178,30 @@ export default function OrderList() {
                     <>
                       {" "}
                       <span className={`chip ${resolveChipVariant("info")}`}>Erbracht</span>
+                    </>
+                  ) : null}
+                  {/* Only on a PAID order. "Keine Rechnung" against an
+                      unpaid one would read as a fault, when it is simply
+                      not due yet. A failure carries its reason in the
+                      title, because a failure nobody can read is a
+                      failure nobody fixes. */}
+                  {order.status === "paid" && order.invoice_status === "ok" ? (
+                    <>
+                      {" "}
+                      <span className={`chip ${resolveChipVariant("success")}`}>
+                        {order.invoice_number ? `RE ${order.invoice_number}` : "Rechnung"}
+                      </span>
+                    </>
+                  ) : null}
+                  {order.status === "paid" && order.invoice_status === "failed" ? (
+                    <>
+                      {" "}
+                      <span
+                        className={`chip ${resolveChipVariant("danger")}`}
+                        title={order.invoice_error ?? undefined}
+                      >
+                        Rechnung fehlgeschlagen
+                      </span>
                     </>
                   ) : null}
                 </td>

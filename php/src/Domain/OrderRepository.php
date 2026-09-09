@@ -370,6 +370,123 @@ final class OrderRepository
         return $stmt->rowCount() === 1;
     }
 
+    /**
+     * One order by its primary key, for internal callers.
+     *
+     * Unlike {@see byToken()} this hides nothing: the caller is our own code
+     * (invoicing, the panel), not a customer holding a token.
+     */
+    public function byId(int $orderId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM shop_order WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $orderId]);
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $order === false ? null : $order;
+    }
+
+    /**
+     * The lines of one order, in the order they were bought.
+     *
+     * `id` rather than the insert order: MySQL makes no promise about the order
+     * of an unsorted read, and the sequence of positions on an invoice is the
+     * sequence the customer saw in their basket.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function itemsFor(int $orderId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT * FROM shop_order_item WHERE order_id = :id ORDER BY id ASC',
+        );
+        $stmt->execute(['id' => $orderId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * Claim an order for an invoicing attempt.
+     *
+     * The attempt is counted BEFORE Lexware is called, never after. A call that
+     * dies mid-flight — a timeout, a killed worker — would otherwise leave the
+     * counter untouched and the ceiling in {@see OrderInvoicing::MAX_ATTEMPTS}
+     * would never be reached. Counting first means the worst case is one
+     * attempt too few, which is recoverable; counting last means an unbounded
+     * retry, which is not.
+     */
+    public function beginInvoice(int $orderId): void
+    {
+        $this->pdo
+            ->prepare(
+                "UPDATE shop_order SET invoice_status = 'pending',"
+                . ' invoice_attempts = invoice_attempts + 1 WHERE id = :id',
+            )
+            ->execute(['id' => $orderId]);
+    }
+
+    /**
+     * Record what Lexware made of the order.
+     *
+     * The number and the file id are written only when they arrived: reading
+     * them back is a separate call that may fail on its own, and overwriting a
+     * previously stored number with `null` because today's read timed out would
+     * lose the one identifier the customer has.
+     */
+    public function recordInvoice(
+        int $orderId,
+        string $lexwareId,
+        ?string $number,
+        ?string $fileId,
+    ): void {
+        $sql = "UPDATE shop_order SET invoice_status = 'ok', invoice_error = NULL,"
+            . ' invoice_lexware_id = :lex, invoiced_at = NOW()';
+        $params = ['lex' => $lexwareId, 'id' => $orderId];
+        if ($number !== null) {
+            $sql .= ', invoice_number = :no';
+            $params['no'] = $number;
+        }
+        if ($fileId !== null) {
+            $sql .= ', invoice_file_id = :file';
+            $params['file'] = $fileId;
+        }
+        $this->pdo->prepare($sql . ' WHERE id = :id')->execute($params);
+    }
+
+    /** Record why an attempt failed, in words somebody can act on. */
+    public function failInvoice(int $orderId, string $error): void
+    {
+        $this->pdo
+            ->prepare(
+                "UPDATE shop_order SET invoice_status = 'failed', invoice_error = :e WHERE id = :id",
+            )
+            ->execute(['e' => $error, 'id' => $orderId]);
+    }
+
+    /**
+     * The id of the order a payment event refers to, or `null`.
+     *
+     * Same two-identifier rule as {@see markPaid()} and deliberately the same
+     * order of preference: the token is ours and always present where it is
+     * present at all, the provider's session id is the fallback. The webhook
+     * needs this because `markPaid()` reports only THAT it changed a row, not
+     * which one — and invoicing needs the row.
+     */
+    public function idForPayment(string $provider, ?string $reference, ?string $token = null): ?int
+    {
+        if ($token !== null && $token !== '') {
+            $sql = 'SELECT id FROM shop_order WHERE token = :key AND payment_provider = :p LIMIT 1';
+            $key = $token;
+        } elseif ($reference !== null && $reference !== '') {
+            $sql = 'SELECT id FROM shop_order WHERE provider_session_id = :key'
+                . ' AND payment_provider = :p LIMIT 1';
+            $key = $reference;
+        } else {
+            return null;
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['key' => $key, 'p' => $provider]);
+        $id = $stmt->fetchColumn();
+        return $id === false ? null : (int) $id;
+    }
+
     /** The customer-facing order view. The token IS the authorisation. */
     public function byToken(string $token): ?array
     {
@@ -391,6 +508,13 @@ final class OrderRepository
             $order['provider_session_id'],
             $order['provider_payment_ref'],
             $order['note'],
+            // Operational detail about OUR bookkeeping. `invoice_status` and
+            // `invoice_number` stay — a customer may see whether their invoice
+            // exists and what it is called. Why an attempt failed, how often it
+            // was tried, and Lexware's internal file id are ours.
+            $order['invoice_error'],
+            $order['invoice_attempts'],
+            $order['invoice_file_id'],
         );
         $order['items'] = $items->fetchAll(PDO::FETCH_ASSOC) ?: [];
         return $order;
