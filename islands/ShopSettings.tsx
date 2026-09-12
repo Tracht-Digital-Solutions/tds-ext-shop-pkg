@@ -136,7 +136,7 @@ export default function ShopSettings() {
         body: JSON.stringify({ settings }),
       });
       if (!res.ok) {
-        toast.error(`Speichern fehlgeschlagen (HTTP ${res.status}).`);
+        toast.danger(`Speichern fehlgeschlagen (HTTP ${res.status}).`);
         return;
       }
       setAccessInput("");
@@ -149,7 +149,7 @@ export default function ShopSettings() {
       toast.success("Gespeichert.");
       await load();
     } catch {
-      toast.error("Speichern fehlgeschlagen — keine Verbindung zur API.");
+      toast.danger("Speichern fehlgeschlagen — keine Verbindung zur API.");
     } finally {
       setBusy(false);
     }

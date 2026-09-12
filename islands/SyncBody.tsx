@@ -52,13 +52,13 @@ export default function SyncBody() {
       if (!res.ok) throw new Error(String(res.status));
       const result = (await res.json()) as { ok: number; failed: number; stopped: string | null };
       if (result.stopped === "revoked") {
-        toast.error("Amazon lehnt den Zugang weiterhin ab — Zugangsdaten und Partnerprogramm prüfen.");
+        toast.danger("Amazon lehnt den Zugang weiterhin ab — Zugangsdaten und Partnerprogramm prüfen.");
       } else {
         toast.success(`${result.ok} Angebote aktualisiert, ${result.failed} fehlgeschlagen.`);
       }
       await load();
     } catch (err) {
-      toast.error(`Abgleich fehlgeschlagen (${err instanceof Error ? err.message : "unbekannt"}).`);
+      toast.danger(`Abgleich fehlgeschlagen (${err instanceof Error ? err.message : "unbekannt"}).`);
     } finally {
       setBusy(false);
     }

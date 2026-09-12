@@ -111,7 +111,7 @@ export default function ProductList() {
       if (!res.ok) {
         // Carry the server's own message: "Slug ungültig" is actionable,
         // "Speichern fehlgeschlagen" is not.
-        toast.error(json.error ?? `Speichern fehlgeschlagen (HTTP ${res.status})`);
+        toast.danger(json.error ?? `Speichern fehlgeschlagen (HTTP ${res.status})`);
         return;
       }
       toast.success(editingId === null ? "Produkt angelegt." : "Produkt gespeichert.");
@@ -119,7 +119,7 @@ export default function ProductList() {
       setEditingId(null);
       await load();
     } catch {
-      toast.error("Speichern fehlgeschlagen — keine Verbindung zur API.");
+      toast.danger("Speichern fehlgeschlagen — keine Verbindung zur API.");
     } finally {
       setSaving(false);
     }
@@ -152,7 +152,7 @@ export default function ProductList() {
       toast.success("Produkt gelöscht.");
       await load();
     } catch (err) {
-      toast.error(`Löschen fehlgeschlagen (${err instanceof Error ? err.message : "unbekannt"}).`);
+      toast.danger(`Löschen fehlgeschlagen (${err instanceof Error ? err.message : "unbekannt"}).`);
     } finally {
       setDeleting(false);
       setPendingDelete(null);
@@ -388,7 +388,7 @@ export default function ProductList() {
       <ConfirmDialog
         open={pendingDelete !== null}
         title="Produkt löschen?"
-        description={
+        message={
           pendingDelete
             ? `„${pendingDelete.translations.de?.title ?? pendingDelete.id}" wird mit allen Übersetzungen, Angeboten und Platzierungseinträgen entfernt.`
             : ""

@@ -104,7 +104,7 @@ export default function OrderList() {
       toast.success(`${order.order_no} als erbracht markiert.`);
       await load();
     } catch (err) {
-      toast.error(`Fehlgeschlagen (${err instanceof Error ? err.message : "unbekannt"}).`);
+      toast.danger(`Fehlgeschlagen (${err instanceof Error ? err.message : "unbekannt"}).`);
     } finally {
       setBusyId(null);
     }

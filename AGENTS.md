@@ -291,7 +291,7 @@ must answer on a host where nobody has configured anything yet.
 
 
 ```bash
-npm run test:run    # vitest, 40 tests (jsdom per-file via a @vitest-environment docblock)
+npm run test:run    # vitest, 41 tests (jsdom per-file via a @vitest-environment docblock)
 ```
 
 The suites target the failures that have no other symptom.
@@ -323,6 +323,12 @@ The suites target the failures that have no other symptom.
   when its request fails, and reaches its endpoint through an absolute URL.
 - **`tests/packaging.test.ts`** — every manifest specifier resolves, is
   exported, and ships.
+- **`tests/islandToasts.test.ts`** — every `toast.<method>(…)` in `islands/`
+  names a method the installed tds-shared toast actually has. Nothing else
+  type-checks the islands: `tsconfig.json` and tsup cover `src/`, and the
+  product build strips types with esbuild. Nine `toast.error(…)` calls shipped
+  that way, and each failure path threw a TypeError instead of showing its
+  message.
 
 Verified by mutation on the load-bearing rule: flipping `>` to `>=` in the
 freshness comparison is caught by the boundary test in both the PHP and the

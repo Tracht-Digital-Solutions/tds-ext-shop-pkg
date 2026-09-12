@@ -76,7 +76,7 @@ export default function PlacementManager() {
       toast.success(`„${placement.label}" gespeichert.`);
       await load();
     } catch (err) {
-      toast.error(
+      toast.danger(
         `Speichern fehlgeschlagen (${err instanceof Error ? err.message : "unbekannt"}).`,
       );
     } finally {
