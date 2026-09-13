@@ -35,7 +35,7 @@ programme rather than a layout.
 served by the placement endpoint and rendered by the shared `ProductCard`, so no
 consuming surface can forget it. It is not a setting.
 
-## Two things worth knowing about the schema
+## Three things worth knowing about the schema
 
 - **A product is split into a language-neutral core (`shop_product`) and its
   translations (`shop_product_translation`)** — unlike `blog_post`, which stores
@@ -48,6 +48,13 @@ consuming surface can forget it. It is not a setting.
   Everything else renders but stays out of the index, which is what stops a bulk
   import of 300 ASINs from turning the domain into the thin-affiliate pattern
   search engines demote.
+- **A category is a slug on the product; its names live in `shop_category`.**
+  The slug is the identity and part of the shop's address (`/kategorie/netzwerk`),
+  so saving a product refuses anything outside `[a-z0-9-]{2,60}`. The German and
+  English names are set in the panel under "Kategorien" and served as
+  `categoryLabel` (products) and `label` (category list), resolved by
+  `Support\CategoryName`: name in the language, then German, then the slug with a
+  capital first letter. Before this, the English shop showed German categories.
 
 ## Develop
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Tds\Ext\Shop\Domain;
 
 use PDO;
+use Tds\Ext\Shop\Support\CategoryName;
 use Tds\Ext\Shop\Support\PriceFreshness;
 
 /**
@@ -162,7 +163,10 @@ final class ProductRepository
         return $page['products'];
     }
 
-    /** Distinct categories with their published counts, for the shop's navigation. */
+    /**
+     * Distinct categories with their published counts, for the shop's
+     * navigation — each with the name a reader sees in `$lang`.
+     */
     public function publicCategories(string $lang): array
     {
         $stmt = $this->pdo->prepare(
@@ -172,9 +176,15 @@ final class ProductRepository
             . ' GROUP BY p.category ORDER BY total DESC, p.category ASC',
         );
         $stmt->execute(['lang' => $lang]);
+        $names = $this->categoryNames();
         $out = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
-            $out[] = ['category' => (string) $row['category'], 'total' => (int) $row['total']];
+            $slug = (string) $row['category'];
+            $out[] = [
+                'category' => $slug,
+                'label' => CategoryName::resolve($slug, $names[$slug][0] ?? null, $names[$slug][1] ?? null, $lang),
+                'total' => (int) $row['total'],
+            ];
         }
         return $out;
     }
@@ -472,11 +482,13 @@ final class ProductRepository
         $ids = array_map(static fn (array $r): int => (int) $r['id'], $rows);
         $offers = $this->offersFor($ids);
         $covers = $this->coversFor($ids);
+        $names = $this->categoryNames();
 
         $out = [];
         foreach ($rows as $row) {
             $id = (int) $row['id'];
             $slug = (string) $row['slug'];
+            $category = (string) ($row['category'] ?? '');
 
             // An own offer is bought here, not somewhere else, so its link goes
             // to this site's checkout rather than through the click redirect.
@@ -498,7 +510,15 @@ final class ProductRepository
                 'url' => $this->productUrl($slug, $lang),
                 'title' => (string) $row['title'],
                 'teaser' => (string) ($row['teaser'] ?? ''),
-                'category' => (string) ($row['category'] ?? ''),
+                'category' => $category,
+                // The slug stays the identity (it is in the shop's address);
+                // this is what a reader sees. See CategoryName for the order.
+                'categoryLabel' => CategoryName::resolve(
+                    $category,
+                    $names[$category][0] ?? null,
+                    $names[$category][1] ?? null,
+                    $lang,
+                ),
                 'tags' => self::splitTags($row['tags'] ?? null),
                 'imageUrl' => $covers[$id] ?? null,
                 'kind' => (string) ($row['kind'] ?? 'affiliate'),
@@ -511,6 +531,33 @@ final class ProductRepository
             ];
         }
         return $out;
+    }
+
+    /**
+     * Every named category, slug => [German name, English name].
+     *
+     * Swallows its own failure and answers `[]`. The names are a refinement of
+     * a slug that renders on its own, so a missing table — the first request
+     * after a deploy, before the in-process migrator has created
+     * `shop_category` — must cost the catalogue its names, not the catalogue.
+     *
+     * @return array<string, array{0: ?string, 1: ?string}>
+     */
+    private function categoryNames(): array
+    {
+        try {
+            $stmt = $this->pdo->query('SELECT slug, name_de, name_en FROM shop_category');
+            $names = [];
+            foreach (($stmt === false ? [] : $stmt->fetchAll(PDO::FETCH_ASSOC)) ?: [] as $row) {
+                $names[(string) $row['slug']] = [
+                    $row['name_de'] !== null ? (string) $row['name_de'] : null,
+                    $row['name_en'] !== null ? (string) $row['name_en'] : null,
+                ];
+            }
+            return $names;
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

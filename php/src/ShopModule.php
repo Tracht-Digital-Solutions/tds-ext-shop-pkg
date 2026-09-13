@@ -8,6 +8,7 @@ use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
+use Tds\Ext\Shop\Domain\CategoryRepository;
 use Tds\Ext\Shop\Domain\ClickRepository;
 use Tds\Ext\Shop\Domain\OrderRepository;
 use Tds\Ext\Shop\Domain\PlacementRepository;
@@ -105,6 +106,7 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
         });
         $c?->set(PlacementRepository::class, static fn ($c) => new PlacementRepository($c->get(PDO::class)));
         $c?->set(ClickRepository::class, static fn ($c) => new ClickRepository($c->get(PDO::class)));
+        $c?->set(CategoryRepository::class, static fn ($c) => new CategoryRepository($c->get(PDO::class)));
         $c?->set(SyncQueueRepository::class, static fn ($c) => new SyncQueueRepository($c->get(PDO::class)));
 
         $c?->set(AmazonPaApiClient::class, static function ($c): ?AmazonPaApiClient {
@@ -471,6 +473,33 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
             if (isset($body['productIds']) && is_array($body['productIds'])) {
                 $repo->setItems((int) $placement['id'], array_map('intval', $body['productIds']));
             }
+            return self::json($res, ['ok' => true]);
+        });
+
+        // Category names. A category itself is created by typing its slug on a
+        // product; these two routes only list what exists and name it in
+        // German and English. Not fail-soft, like every panel route.
+        $app->get('/shop/categories', function (Request $req, Response $res) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'shop:read', $res)) !== null) {
+                return $deny;
+            }
+            return self::json($res, ['categories' => $c->get(CategoryRepository::class)->adminList()]);
+        });
+
+        $app->put('/shop/categories/{slug:[a-z0-9-]+}', function (Request $req, Response $res, array $args) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'shop:write', $res)) !== null) {
+                return $deny;
+            }
+            $slug = (string) $args['slug'];
+            $body = (array) ($req->getParsedBody() ?? []);
+            if (($error = self::validateCategory($slug, $body)) !== null) {
+                return self::json($res, ['error' => $error], 422);
+            }
+            $c->get(CategoryRepository::class)->save(
+                $slug,
+                \Tds\Ext\Shop\Support\CategoryName::clean($body['nameDe'] ?? null),
+                \Tds\Ext\Shop\Support\CategoryName::clean($body['nameEn'] ?? null),
+            );
             return self::json($res, ['ok' => true]);
         });
 
@@ -1203,6 +1232,33 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
         }
         if (trim((string) ($body['title'] ?? '')) === '') {
             return 'Titel fehlt.';
+        }
+        // The category is part of the shop's address (`/kategorie/{slug}`),
+        // and that route accepts exactly this pattern. "Netzwerk & WLAN" typed
+        // here used to be stored as-is and gave the category a page that 404s.
+        // The readable name belongs in the category names, not in the slug.
+        $category = (string) ($body['category'] ?? 'allgemein');
+        if (!preg_match(\Tds\Ext\Shop\Support\CategoryName::SLUG_PATTERN, $category)) {
+            return 'Kategorie muss aus 2–60 Kleinbuchstaben, Ziffern und Bindestrichen bestehen — '
+                . 'sie steht in der Adresse des Shops. Den lesbaren Namen pflegst du unter „Kategorien“.';
+        }
+        return null;
+    }
+
+    /** @param array<string,mixed> $body */
+    private static function validateCategory(string $slug, array $body): ?string
+    {
+        if (!preg_match(\Tds\Ext\Shop\Support\CategoryName::SLUG_PATTERN, $slug)) {
+            return 'Kategorie-Slug muss aus 2–60 Kleinbuchstaben, Ziffern und Bindestrichen bestehen.';
+        }
+        foreach (['nameDe' => 'deutsche', 'nameEn' => 'englische'] as $field => $label) {
+            $value = $body[$field] ?? null;
+            if ($value !== null && !is_string($value)) {
+                return "Der {$label} Name muss Text sein.";
+            }
+            if (is_string($value) && mb_strlen(trim($value)) > \Tds\Ext\Shop\Support\CategoryName::MAX_LENGTH) {
+                return "Der {$label} Name darf höchstens " . \Tds\Ext\Shop\Support\CategoryName::MAX_LENGTH . ' Zeichen lang sein.';
+            }
         }
         return null;
     }

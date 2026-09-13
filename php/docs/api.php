@@ -44,7 +44,9 @@ return [
         'auth' => 'public',
         'tag' => 'Katalog',
         'params' => [['name' => 'lang', 'in' => 'query', 'description' => '`de` oder `en`.']],
-        'responses' => [['status' => 200, 'description' => '`{categories: [{category, total}]}`']],
+        'responses' => [['status' => 200, 'description' => '`{categories: [{category, label, total}]}` — '
+            . '`label` ist der gepflegte Name in `lang`, sonst der deutsche, sonst der Slug mit großem '
+            . 'Anfangsbuchstaben. Produkte tragen denselben Namen als `categoryLabel`.']],
     ],
     [
         'method' => 'GET',
@@ -511,6 +513,37 @@ return [
         ],
     ],
 
+    [
+        'method' => 'GET',
+        'pattern' => '/shop/categories',
+        'summary' => 'Kategorien mit ihren Namen und der Zahl der Produkte',
+        'description' => 'Vereinigt die Kategorien, die Produkte benutzen, mit denen, die schon '
+            . 'einen Namen haben. Eine Kategorie entsteht durch ihren Slug an einem Produkt; '
+            . 'hier bekommt sie ihren deutschen und englischen Namen.',
+        'auth' => 'permission',
+        'permission' => 'shop:read',
+        'tag' => 'Verwaltung',
+        'responses' => [['status' => 200, 'description' => '`{categories: [{slug, nameDe, nameEn, products}]}`']],
+    ],
+    [
+        'method' => 'PUT',
+        'pattern' => '/shop/categories/{slug:[a-z0-9-]+}',
+        'summary' => 'Den deutschen und englischen Namen einer Kategorie setzen',
+        'description' => 'Beide Namen leer entfernt den Eintrag — die Kategorie erscheint dann '
+            . 'wieder unter ihrem Slug mit großem Anfangsbuchstaben.',
+        'auth' => 'permission',
+        'permission' => 'shop:write',
+        'tag' => 'Verwaltung',
+        'params' => [
+            ['name' => 'slug', 'in' => 'path', 'description' => '2–60 Kleinbuchstaben, Ziffern, Bindestriche.'],
+            ['name' => 'nameDe', 'in' => 'body', 'description' => 'Deutscher Name, höchstens 80 Zeichen; leer = keiner.'],
+            ['name' => 'nameEn', 'in' => 'body', 'description' => 'Englischer Name, höchstens 80 Zeichen; leer = keiner.'],
+        ],
+        'responses' => [
+            ['status' => 200, 'description' => '`{ok: true}`'],
+            ['status' => 422, 'description' => 'Slug ungültig oder Name zu lang.'],
+        ],
+    ],
     [
         'method' => 'GET',
         'pattern' => '/shop/clicks',

@@ -192,6 +192,52 @@ final class ShopModuleTest extends TestCase
         self::assertSame(403, $res->getStatusCode());
     }
 
+    /* --- categories -------------------------------------------------------- */
+
+    private static function put(string $path, array $body, UserContext $user): \Psr\Http\Message\ResponseInterface
+    {
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('PUT', $path)
+            ->withParsedBody($body);
+        return self::app($user)->handle($request);
+    }
+
+    public function testRejectsACategoryTheShopCannotRoute(): void
+    {
+        // The category is part of the shop's address, and `/kategorie/{slug}`
+        // accepts only [a-z0-9-]{2,60}. A free-text "Netzwerk & WLAN" used to be
+        // stored as-is — a category whose own page 404s.
+        $res = self::post(
+            '/shop/products',
+            ['slug' => 'gueltig', 'title' => 'X', 'category' => 'Netzwerk & WLAN'],
+            new FakeUser(['shop:write']),
+        );
+        self::assertSame(422, $res->getStatusCode());
+        self::assertStringContainsString('Kategorie', (string) $res->getBody());
+    }
+
+    public function testCategoryNamesAreGatedByPermission(): void
+    {
+        self::assertSame(401, self::call(self::app(), 'GET', '/shop/categories')->getStatusCode());
+        $res = self::put('/shop/categories/netzwerk', ['nameDe' => 'Netzwerk'], new FakeUser(['shop:read']));
+        self::assertSame(403, $res->getStatusCode());
+    }
+
+    public function testRejectsAnOverlongCategoryNameBeforeTouchingTheDatabase(): void
+    {
+        $res = self::put('/shop/categories/netzwerk', ['nameEn' => str_repeat('x', 81)], new FakeUser(['shop:write']));
+        self::assertSame(422, $res->getStatusCode());
+    }
+
+    public function testAValidCategoryNameReachesTheRepository(): void
+    {
+        // The stub PDO throws on use, so reaching it IS the assertion: the
+        // request passed the gate and the validation.
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('no database');
+        self::put('/shop/categories/netzwerk', ['nameDe' => 'Netzwerk', 'nameEn' => 'Networking'], new FakeUser(['shop:write']));
+    }
+
     /* --- checkout preconditions -------------------------------------------- */
 
     public function testTheCountryCheckStillHappensBeforeAnyDatabaseAccess(): void

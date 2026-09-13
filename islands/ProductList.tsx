@@ -75,6 +75,9 @@ export default function ProductList() {
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Suggestions for the category field, so an existing category is picked
+  // rather than retyped as a near-duplicate ("netzwerk" / "netzwerke").
+  const [categorySlugs, setCategorySlugs] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -94,6 +97,22 @@ export default function ProductList() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Re-read whenever the catalogue changes: saving a product may have created
+  // a category. Failures are silent on purpose — these are suggestions, and
+  // the field works without them.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await apiFetch("/shop/categories");
+        if (!res.ok) return;
+        const json = (await res.json()) as { categories: { slug: string }[] };
+        setCategorySlugs(json.categories.map((c) => c.slug));
+      } catch {
+        // suggestions only
+      }
+    })();
+  }, [products]);
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -236,10 +255,22 @@ export default function ProductList() {
         <div className="tds-field-row">
           <label>
             Kategorie
+            {/* A slug, because it is part of the shop's address — the server
+                refuses anything else. The readable German and English names
+                live under "Kategorien" below the catalogue. */}
             <input className="field-boxed"
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value })}
+              list="shop-category-slugs"
+              pattern="[a-z0-9\-]{2,60}"
+              title="2–60 Kleinbuchstaben, Ziffern und Bindestriche"
             />
+            <datalist id="shop-category-slugs">
+              {categorySlugs.map((slug) => (
+                <option key={slug} value={slug} />
+              ))}
+            </datalist>
+            <small>Slug, z. B. netzwerk. Den lesbaren Namen pflegst du unter „Kategorien“.</small>
           </label>
           <label>
             Schlagwörter
