@@ -270,7 +270,7 @@ export default function ProductList() {
                 <option key={slug} value={slug} />
               ))}
             </datalist>
-            <small>Slug, z. B. netzwerk. Den lesbaren Namen pflegst du unter „Kategorien“.</small>
+            <small>Slug, z. B. netzwerk. Den lesbaren Namen pflegen Sie unter „Kategorien“.</small>
           </label>
           <label>
             Schlagwörter
