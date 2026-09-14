@@ -550,7 +550,11 @@ final class OrderRepository
             . " (SELECT COUNT(*) FROM shop_order WHERE status = 'paid') AS paid,"
             . " (SELECT COUNT(*) FROM shop_order WHERE status = 'paid' AND fulfilled_at IS NULL) AS open,"
             . " (SELECT COALESCE(SUM(gross_cents),0) FROM shop_order WHERE status = 'paid'"
-            . '   AND created_at >= (UTC_TIMESTAMP() - INTERVAL 30 DAY)) AS gross30',
+            // NOW(), not UTC_TIMESTAMP(): `created_at` is the column default
+            // CURRENT_TIMESTAMP, i.e. Berlin wall-clock time in the pinned
+            // session. The UTC columns next to it compare against
+            // UTC_TIMESTAMP(); mixing the two shifted the window by the offset.
+            . '   AND created_at >= (NOW() - INTERVAL 30 DAY)) AS gross30',
         )?->fetch(PDO::FETCH_ASSOC) ?: [];
 
         return [

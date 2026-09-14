@@ -443,6 +443,16 @@ shortened the 24-hour window and published retrieval times early by the offset.
 Compare in SQL against `UTC_TIMESTAMP()`, not `NOW()`. `PriceFreshnessTest` and
 `UtcDateTimeTest` run in Europe/Berlin for that reason.
 
+**Two conventions, one per column, never mixed in one condition.** The host pins
+PHP and every DB session to Europe/Berlin (tds-core-frontend-api 0.19.5), so a
+column that takes its value from `CURRENT_TIMESTAMP` or `NOW()` — `created_at`,
+`updated_at`, `invoiced_at` — holds Berlin wall-clock time and compares against
+`NOW()`. The UTC columns are `price_checked_at`, `published_at`,
+`shop_order.withdrawal_consent_at`, `fulfilled_at` and the sync queue's and sync
+runs' timestamps (`next_call_at`, `locked_until`, `finished_at`); they compare
+against `UTC_TIMESTAMP()`. The dashboard's 30-day revenue compared `created_at`
+with `UTC_TIMESTAMP()` and was off by the offset until 0.4.6.
+
 ### The signing is split out so it can be tested
 
 `Support\PaApiSigner` is pure and takes its clock as an argument, because it is
