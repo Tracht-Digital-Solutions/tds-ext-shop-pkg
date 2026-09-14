@@ -436,6 +436,13 @@ moment, and it is what the 24-hour rule reads. Nothing else in this package may
 set it — `setOffers()` deliberately leaves it null for a hand-typed affiliate
 price, so such a price is stored but not displayed until the sync confirms it.
 
+It is a UTC stamp without a zone (`UTC_TIMESTAMP()`), and so is `published_at`.
+Read both back with `Support\UtcDateTime`, never with a bare `strtotime()`: that
+uses PHP's default timezone, and on the production host (east of UTC) it
+shortened the 24-hour window and published retrieval times early by the offset.
+Compare in SQL against `UTC_TIMESTAMP()`, not `NOW()`. `PriceFreshnessTest` and
+`UtcDateTimeTest` run in Europe/Berlin for that reason.
+
 ### The signing is split out so it can be tested
 
 `Support\PaApiSigner` is pure and takes its clock as an argument, because it is

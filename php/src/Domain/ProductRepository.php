@@ -6,6 +6,7 @@ namespace Tds\Ext\Shop\Domain;
 use PDO;
 use Tds\Ext\Shop\Support\CategoryName;
 use Tds\Ext\Shop\Support\PriceFreshness;
+use Tds\Ext\Shop\Support\UtcDateTime;
 
 /**
  * Catalogue data access — plain PDO, no ORM, matching the other extensions.
@@ -211,7 +212,9 @@ final class ProductRepository
             . " (SELECT COUNT(*) FROM shop_product WHERE editorial_status <> 'published') AS unwritten,"
             . ' (SELECT COUNT(*) FROM shop_offer) AS offers,'
             . ' (SELECT COUNT(*) FROM shop_offer WHERE price_checked_at IS NULL'
-            . '   OR price_checked_at < (NOW() - INTERVAL 24 HOUR)) AS stale_prices';
+            // UTC_TIMESTAMP(), not NOW(): price_checked_at is stamped in UTC, and
+            // NOW() follows the session zone — the count drifted by its offset.
+            . '   OR price_checked_at < (UTC_TIMESTAMP() - INTERVAL 24 HOUR)) AS stale_prices';
         $row = $this->pdo->query($sql)?->fetch(PDO::FETCH_ASSOC) ?: [];
         return [
             'published' => (int) ($row['published'] ?? 0),
@@ -259,7 +262,7 @@ final class ProductRepository
                     'category' => (string) $row['category'],
                     'tags' => self::splitTags($row['tags'] ?? null),
                     'brand' => $row['brand'] !== null ? (string) $row['brand'] : null,
-                    'publishedAt' => self::iso($row['published_at'] ?? null),
+                    'publishedAt' => self::isoUtc($row['published_at'] ?? null),
                     'translations' => [],
                 ];
             }
@@ -526,7 +529,7 @@ final class ProductRepository
                 'metaDescription' => isset($row['meta_description'])
                     ? (string) $row['meta_description'] : null,
                 'machineTranslated' => (bool) ($row['machine_translated'] ?? false),
-                'publishedAt' => self::iso($row['published_at'] ?? null),
+                'publishedAt' => self::isoUtc($row['published_at'] ?? null),
                 'offers' => $offersForProduct,
             ];
         }
@@ -634,7 +637,7 @@ final class ProductRepository
                 // Cleared alongside the price. A timestamp left behind on a
                 // stripped price would read as "checked, and free". An own
                 // price carries none because it never expires.
-                'priceCheckedAt' => $own ? null : ($price === null ? null : self::iso($checkedAt)),
+                'priceCheckedAt' => $own ? null : ($price === null ? null : self::isoUtc($checkedAt)),
                 'availability' => (string) ($row['availability'] ?? 'unknown'),
                 'position' => (int) ($row['position'] ?? 0),
                 // The VAT split, so a checkout page can show the mandatory
@@ -724,12 +727,31 @@ final class ProductRepository
         return array_values($parts);
     }
 
+    /**
+     * For `updated_at`, which `CURRENT_TIMESTAMP` writes in the MySQL session
+     * zone, so reading it in PHP's zone is only right while both agree. The
+     * convention for those columns is still open (tds-ext-shop-pkg#2).
+     */
     private static function iso(mixed $value): ?string
     {
         if (!is_string($value) || trim($value) === '') {
             return null;
         }
         $ts = strtotime($value);
+        return $ts === false ? null : gmdate('Y-m-d\TH:i:s\Z', $ts);
+    }
+
+    /**
+     * For columns stamped in UTC (`published_at`, `price_checked_at`). Read in
+     * PHP's zone, a host east of UTC published retrieval times hours early —
+     * and the browser's own 24-hour check stripped the price that much sooner.
+     */
+    private static function isoUtc(mixed $value): ?string
+    {
+        if (!is_string($value) || trim($value) === '') {
+            return null;
+        }
+        $ts = UtcDateTime::timestamp($value);
         return $ts === false ? null : gmdate('Y-m-d\TH:i:s\Z', $ts);
     }
 

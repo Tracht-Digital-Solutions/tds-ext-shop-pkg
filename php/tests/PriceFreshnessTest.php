@@ -74,4 +74,19 @@ final class PriceFreshnessTest extends TestCase
         $checked = gmdate('Y-m-d H:i:s', self::NOW - 60);
         self::assertSame(0, PriceFreshness::publishablePrice(0, $checked, self::NOW));
     }
+
+    public function testTheWindowDoesNotShrinkOnAHostEastOfUtc(): void
+    {
+        // The stamp is UTC without a zone. Read in Europe/Berlin it looked two
+        // hours older, so a price quoted 23 hours ago was already stripped.
+        $previous = date_default_timezone_get();
+        date_default_timezone_set('Europe/Berlin');
+        try {
+            $checked = gmdate('Y-m-d H:i:s', self::NOW - 23 * 3600);
+            self::assertTrue(PriceFreshness::isFresh($checked, self::NOW));
+            self::assertFalse(PriceFreshness::isFresh(gmdate('Y-m-d H:i:s', self::NOW - 25 * 3600), self::NOW));
+        } finally {
+            date_default_timezone_set($previous);
+        }
+    }
 }

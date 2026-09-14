@@ -43,7 +43,9 @@ final class PriceFreshness
         if ($checkedAt === null || trim($checkedAt) === '') {
             return false;
         }
-        $ts = strtotime($checkedAt);
+        // A UTC stamp without a zone; see UtcDateTime for why strtotime() alone
+        // shortened the window by the host's offset.
+        $ts = UtcDateTime::timestamp($checkedAt);
         if ($ts === false) {
             return false;
         }
