@@ -74,7 +74,9 @@ runs against a container stub whose PDO always fails — which is not a shortcut
 but the point: it pins the fail-soft behaviour of the public routes, the case
 nobody exercises by hand.
 
-Migrations use the `20260907*` band. Every enabled module's migrations run in one
+Migrations use the date bands listed in `OUR_BANDS` of `ShopMigrationsTest`
+(`20260907`, `20260908`, `20260909`, `20260913`, `20260915`); a new day is claimed
+there on purpose. Every enabled module's migrations run in one
 process against one `phinxlog`, so a filename/class mismatch or a reused version
 aborts migrations for **every** module. `ShopMigrationsTest` checks all of that
 without a database — including that foreign keys carry `'signed' => false`, which

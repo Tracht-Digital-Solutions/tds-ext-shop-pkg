@@ -42,7 +42,7 @@ final class ShopMigrationsTest extends TestCase
      * the whole platform shares one `phinxlog` and a reused version aborts
      * migrations for every module at once.
      */
-    private const OUR_BANDS = ['20260907', '20260908', '20260909', '20260913'];
+    private const OUR_BANDS = ['20260907', '20260908', '20260909', '20260913', '20260915'];
 
     /** @return list<string> absolute paths */
     private static function files(): array
@@ -134,5 +134,28 @@ final class ShopMigrationsTest extends TestCase
             }
         }
         self::assertSame([], $problems, 'FK-Spalten ohne signed => false');
+    }
+
+    /**
+     * No migration may reach for an adapter method outside Phinx's interface.
+     *
+     * A website-cms seed quoted through `getAdapter()->quoteValue()`, which is
+     * protected on `PdoAdapter` and absent from the `TimedOutputAdapter` a
+     * migration actually receives. It died on every run, and because all modules
+     * share one ledger, it stopped every migration pending behind it — this
+     * module's order, cart and category tables among them. The file was valid
+     * PHP; only a real run could tell. Seeds here use the connection's prepared
+     * statements instead.
+     */
+    public function testNoMigrationCallsAnAdapterInternal(): void
+    {
+        $problems = [];
+        foreach (self::files() as $file) {
+            // Code only, so a docblock may name the call it must not make.
+            if (preg_match('/->\s*quoteValue\s*\(/', php_strip_whitespace($file)) === 1) {
+                $problems[] = basename($file);
+            }
+        }
+        self::assertSame([], $problems, 'quoteValue() ist in einer Migration nicht aufrufbar');
     }
 }
