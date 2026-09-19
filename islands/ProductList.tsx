@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "@tracht-digital-solutions/tds-shared/api";
 import { ConfirmDialog, Spinner } from "@tracht-digital-solutions/tds-shared/components";
+import { Presence } from "@tracht-digital-solutions/tds-shared/motion/react";
 import { resolveChipVariant } from "@tracht-digital-solutions/tds-shared/design";
 import { toast } from "@tracht-digital-solutions/tds-shared/toast";
 
@@ -190,153 +191,160 @@ export default function ProductList() {
         </div>
       ) : null}
 
-      <form className="tds-card" onSubmit={save}>
-        <h2>{editingId === null ? "Neues Produkt" : `Produkt #${editingId} bearbeiten`}</h2>
-
-        <div className="tds-field-row">
+      {/* "Bearbeiten" in the table below swaps what this form edits. A
+          cross-fade makes that visible — before, the fields changed in place
+          and the only sign was the heading. Keyed by product, NOT by language:
+          the language select lives in this form, and a re-keyed form would
+          take the focus off it on every change. */}
+      <Presence view={editingId === null ? "new" : `product-${editingId}`}>
+        <form className="tds-card" onSubmit={save}>
+          <h2>{editingId === null ? "Neues Produkt" : `Produkt #${editingId} bearbeiten`}</h2>
+  
+          <div className="tds-field-row">
+            <label>
+              Sprache
+              <select className="field-boxed"
+                value={form.lang}
+                onChange={(e) => setForm({ ...form, lang: e.target.value as Lang })}
+              >
+                <option value="de">Deutsch</option>
+                <option value="en">Englisch</option>
+              </select>
+            </label>
+            <label>
+              Slug
+              <input className="field-boxed"
+                value={form.slug}
+                onChange={(e) => setForm({ ...form, slug: e.target.value })}
+                placeholder="fritzbox-7590-ax"
+                required
+              />
+            </label>
+          </div>
+  
+          <div className="tds-field-row">
+            <label>
+              Titel
+              <input className="field-boxed"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Marke
+              <input className="field-boxed" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
+            </label>
+          </div>
+  
           <label>
-            Sprache
-            <select className="field-boxed"
-              value={form.lang}
-              onChange={(e) => setForm({ ...form, lang: e.target.value as Lang })}
-            >
-              <option value="de">Deutsch</option>
-              <option value="en">Englisch</option>
-            </select>
-          </label>
-          <label>
-            Slug
-            <input className="field-boxed"
-              value={form.slug}
-              onChange={(e) => setForm({ ...form, slug: e.target.value })}
-              placeholder="fritzbox-7590-ax"
-              required
+            Kurzbeschreibung
+            <textarea className="field-boxed"
+              value={form.teaser}
+              onChange={(e) => setForm({ ...form, teaser: e.target.value })}
+              rows={2}
             />
           </label>
-        </div>
-
-        <div className="tds-field-row">
+  
           <label>
-            Titel
+            Meta-Description
             <input className="field-boxed"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              required
+              value={form.metaDescription}
+              onChange={(e) => setForm({ ...form, metaDescription: e.target.value })}
+              maxLength={300}
             />
+            {/* 80–160 is the range that survives a search result intact; the
+                budget is checked by the shop site's own test, so the hint here
+                is guidance rather than a second, drifting rule. */}
+            <small>{form.metaDescription.length} Zeichen — 80 bis 160 ist die nützliche Spanne.</small>
           </label>
-          <label>
-            Marke
-            <input className="field-boxed" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
-          </label>
-        </div>
-
-        <label>
-          Kurzbeschreibung
-          <textarea className="field-boxed"
-            value={form.teaser}
-            onChange={(e) => setForm({ ...form, teaser: e.target.value })}
-            rows={2}
-          />
-        </label>
-
-        <label>
-          Meta-Description
-          <input className="field-boxed"
-            value={form.metaDescription}
-            onChange={(e) => setForm({ ...form, metaDescription: e.target.value })}
-            maxLength={300}
-          />
-          {/* 80–160 is the range that survives a search result intact; the
-              budget is checked by the shop site's own test, so the hint here
-              is guidance rather than a second, drifting rule. */}
-          <small>{form.metaDescription.length} Zeichen — 80 bis 160 ist die nützliche Spanne.</small>
-        </label>
-
-        <div className="tds-field-row">
-          <label>
-            Kategorie
-            {/* A slug, because it is part of the shop's address — the server
-                refuses anything else. The readable German and English names
-                live under "Kategorien" below the catalogue. */}
-            <input className="field-boxed"
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-              list="shop-category-slugs"
-              pattern="[a-z0-9\-]{2,60}"
-              title="2–60 Kleinbuchstaben, Ziffern und Bindestriche"
-            />
-            <datalist id="shop-category-slugs">
-              {categorySlugs.map((slug) => (
-                <option key={slug} value={slug} />
-              ))}
-            </datalist>
-            <small>Slug, z. B. netzwerk. Den lesbaren Namen pflegen Sie unter „Kategorien“.</small>
-          </label>
-          <label>
-            Schlagwörter
-            <input className="field-boxed"
-              value={form.tags}
-              onChange={(e) => setForm({ ...form, tags: e.target.value })}
-              placeholder="nas, backup, homeoffice"
-            />
-          </label>
-        </div>
-
-        <div className="tds-field-row">
-          <label>
-            Art
-            <select className="field-boxed"
-              value={form.kind}
-              onChange={(e) => setForm({ ...form, kind: e.target.value as Product["kind"] })}
-            >
-              <option value="affiliate">Affiliate</option>
-              <option value="digital">Eigenes digitales Produkt</option>
-            </select>
-          </label>
-          <label>
-            Status
-            <select className="field-boxed"
-              value={form.status}
-              onChange={(e) => setForm({ ...form, status: e.target.value as Product["status"] })}
-            >
-              <option value="draft">Entwurf</option>
-              <option value="published">Veröffentlicht</option>
-              <option value="archived">Archiviert</option>
-            </select>
-          </label>
-          <label>
-            Redaktion
-            <select className="field-boxed"
-              value={form.editorialStatus}
-              onChange={(e) =>
-                setForm({ ...form, editorialStatus: e.target.value as Product["editorialStatus"] })
-              }
-            >
-              <option value="none">Kein eigener Text</option>
-              <option value="stub">Notiz</option>
-              <option value="published">Eigener Text — wird indexiert</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="tds-toolbar">
-          <button type="submit" className="btn btn-primary" disabled={saving} aria-busy={saving}>
-            {editingId === null ? "Anlegen" : "Speichern"}
-          </button>
-          {editingId !== null ? (
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => {
-                setEditingId(null);
-                setForm({ ...EMPTY_FORM });
-              }}
-            >
-              Abbrechen
+  
+          <div className="tds-field-row">
+            <label>
+              Kategorie
+              {/* A slug, because it is part of the shop's address — the server
+                  refuses anything else. The readable German and English names
+                  live under "Kategorien" below the catalogue. */}
+              <input className="field-boxed"
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                list="shop-category-slugs"
+                pattern="[a-z0-9\-]{2,60}"
+                title="2–60 Kleinbuchstaben, Ziffern und Bindestriche"
+              />
+              <datalist id="shop-category-slugs">
+                {categorySlugs.map((slug) => (
+                  <option key={slug} value={slug} />
+                ))}
+              </datalist>
+              <small>Slug, z. B. netzwerk. Den lesbaren Namen pflegen Sie unter „Kategorien“.</small>
+            </label>
+            <label>
+              Schlagwörter
+              <input className="field-boxed"
+                value={form.tags}
+                onChange={(e) => setForm({ ...form, tags: e.target.value })}
+                placeholder="nas, backup, homeoffice"
+              />
+            </label>
+          </div>
+  
+          <div className="tds-field-row">
+            <label>
+              Art
+              <select className="field-boxed"
+                value={form.kind}
+                onChange={(e) => setForm({ ...form, kind: e.target.value as Product["kind"] })}
+              >
+                <option value="affiliate">Affiliate</option>
+                <option value="digital">Eigenes digitales Produkt</option>
+              </select>
+            </label>
+            <label>
+              Status
+              <select className="field-boxed"
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value as Product["status"] })}
+              >
+                <option value="draft">Entwurf</option>
+                <option value="published">Veröffentlicht</option>
+                <option value="archived">Archiviert</option>
+              </select>
+            </label>
+            <label>
+              Redaktion
+              <select className="field-boxed"
+                value={form.editorialStatus}
+                onChange={(e) =>
+                  setForm({ ...form, editorialStatus: e.target.value as Product["editorialStatus"] })
+                }
+              >
+                <option value="none">Kein eigener Text</option>
+                <option value="stub">Notiz</option>
+                <option value="published">Eigener Text — wird indexiert</option>
+              </select>
+            </label>
+          </div>
+  
+          <div className="tds-toolbar">
+            <button type="submit" className="btn btn-primary" disabled={saving} aria-busy={saving}>
+              {editingId === null ? "Anlegen" : "Speichern"}
             </button>
-          ) : null}
-        </div>
-      </form>
+            {editingId !== null ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setEditingId(null);
+                  setForm({ ...EMPTY_FORM });
+                }}
+              >
+                Abbrechen
+              </button>
+            ) : null}
+          </div>
+        </form>
+      </Presence>
 
       {products.length === 0 ? (
         <p className="tds-empty">Noch keine Produkte im Katalog.</p>

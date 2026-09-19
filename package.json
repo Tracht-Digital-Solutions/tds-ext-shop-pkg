@@ -35,7 +35,7 @@
     "@tracht-digital-solutions/tds-frontend-contract": "^1.0.0"
   },
   "peerDependencies": {
-    "@tracht-digital-solutions/tds-shared": ">=0.35.0",
+    "@tracht-digital-solutions/tds-shared": ">=0.38.2",
     "astro": ">=6",
     "react": ">=18",
     "react-dom": ">=18"
