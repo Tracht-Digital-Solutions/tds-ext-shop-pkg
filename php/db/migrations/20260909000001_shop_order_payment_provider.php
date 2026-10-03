@@ -25,12 +25,21 @@ use Phinx\Migration\AbstractMigration;
  * new path has run in production.
  *
  * Nothing reads the old columns after this migration.
+ *
+ * ### Re-runnable
+ *
+ * MySQL commits every ALTER on its own, so a failure at the index step used
+ * to leave the columns in place without a phinxlog row — and every re-run then
+ * died on "duplicate column", blocking all later migrations of every module
+ * (they share one log, ordered by version). Each step now checks first.
  */
 final class ShopOrderPaymentProvider extends AbstractMigration
 {
     public function up(): void
     {
-        $this->table('shop_order')
+        $orders = $this->table('shop_order');
+        if (!$orders->hasColumn('payment_provider')) {
+            $orders
             // Which provider issued the reference below. Defaulted to 'stripe'
             // because every row that exists when this runs came from Stripe.
             ->addColumn('payment_provider', 'string', [
@@ -54,6 +63,7 @@ final class ShopOrderPaymentProvider extends AbstractMigration
                 'after' => 'provider_session_id',
             ])
             ->update();
+        }
 
         // Backfill before the unique index goes on, or a duplicate that only
         // exists mid-migration would abort it.
@@ -61,25 +71,28 @@ final class ShopOrderPaymentProvider extends AbstractMigration
             'UPDATE shop_order SET'
             . " payment_provider = 'stripe',"
             . ' provider_session_id = stripe_session_id,'
-            . ' provider_payment_ref = stripe_payment_intent',
+            . ' provider_payment_ref = stripe_payment_intent'
+            . ' WHERE provider_session_id IS NULL AND provider_payment_ref IS NULL',
         );
 
-        $this->table('shop_order')
-            // Scoped to the provider: the idempotency of markPaid() rides on
-            // this, and an unscoped unique would make two providers' id spaces
-            // collide by accident.
-            //
-            // MySQL treats NULLs as distinct in a unique index, which is
-            // exactly right here — every order is created before it has a
-            // reference, so a row with NULL must not block the next one.
-            ->addIndex(['payment_provider', 'provider_session_id'], [
+        // Scoped to the provider: the idempotency of markPaid() rides on
+        // this, and an unscoped unique would make two providers' id spaces
+        // collide by accident. MySQL treats NULLs as distinct in a unique
+        // index, which is exactly right here — every order is created before
+        // it has a reference, so a row with NULL must not block the next one.
+        $orders = $this->table('shop_order');
+        if (!$orders->hasIndexByName('uniq_shop_order_provider_session')) {
+            $orders->addIndex(['payment_provider', 'provider_session_id'], [
                 'unique' => true,
                 'name' => 'uniq_shop_order_provider_session',
-            ])
-            ->addIndex(['payment_provider', 'provider_payment_ref'], [
+            ])->update();
+        }
+        $orders = $this->table('shop_order');
+        if (!$orders->hasIndexByName('idx_shop_order_provider_payment')) {
+            $orders->addIndex(['payment_provider', 'provider_payment_ref'], [
                 'name' => 'idx_shop_order_provider_payment',
-            ])
-            ->update();
+            ])->update();
+        }
     }
 
     public function down(): void
