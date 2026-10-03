@@ -39,6 +39,7 @@ use Tds\Frontend\Contract\PermissionDef;
 use Tds\Frontend\Contract\SettingsStore;
 use Tds\Frontend\Contract\SiteKeyProtected;
 use Tds\Frontend\Contract\UserContext;
+use Tds\Frontend\Contract\ModuleHttp;
 
 /**
  * TDShop backend: the catalogue, the placements that embed it elsewhere, the
@@ -55,6 +56,8 @@ use Tds\Frontend\Contract\UserContext;
  */
 final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyProtected
 {
+    use ModuleHttp;
+
     private const LANGS = ['de', 'en'];
 
     /** Settings namespace. Per-extension, so keys cannot collide in the shared store. */
@@ -1041,7 +1044,6 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
         });
     }
 
-
     /**
      * Turn a posted basket into priced lines, or null if any of it is unsellable.
      *
@@ -1207,17 +1209,6 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
 
     /* --- helpers ---------------------------------------------------------- */
 
-    private static function require(UserContext $user, string $permission, Response $res): ?Response
-    {
-        if (!$user->isAuthenticated()) {
-            return self::json($res, ['error' => 'Unauthorized'], 401);
-        }
-        if (!$user->has($permission)) {
-            return self::json($res, ['error' => 'Forbidden'], 403);
-        }
-        return null;
-    }
-
     /**
      * Validate a product payload. Returns a German message, or null when fine.
      *
@@ -1289,12 +1280,6 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
     private static function emptyPlacement(string $key, string $lang): array
     {
         return ['key' => $key, 'heading' => null, 'label' => self::adLabel($lang), 'products' => []];
-    }
-
-    private static function json(Response $res, mixed $data, int $status = 200): Response
-    {
-        $res->getBody()->write(json_encode($data, JSON_THROW_ON_ERROR));
-        return $res->withStatus($status)->withHeader('Content-Type', 'application/json');
     }
 
     /**
