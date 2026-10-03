@@ -392,6 +392,13 @@ final class ProductRepository
         }
     }
 
+    public function exists(int $id): bool
+    {
+        $stmt = $this->pdo->prepare('SELECT 1 FROM shop_product WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+        return $stmt->fetchColumn() !== false;
+    }
+
     public function delete(int $id): bool
     {
         $stmt = $this->pdo->prepare('DELETE FROM shop_product WHERE id = :id');
@@ -410,10 +417,21 @@ final class ProductRepository
      */
     public function setOffers(int $productId, array $offers): void
     {
+        // UPDATE IN PLACE, not delete-and-reinsert. Deleting every offer row
+        // cascaded (FK ON DELETE CASCADE) into `shop_own_product` — which
+        // nothing re-creates, so an own product became unsellable on its
+        // first offer save — and into click history and the sync queue; it
+        // also changed every offer id (dead `/go/{id}` links) and wiped every
+        // confirmed affiliate price.
         $this->pdo->beginTransaction();
         try {
-            $this->pdo->prepare('DELETE FROM shop_offer WHERE product_id = :id')
-                ->execute(['id' => $productId]);
+            $existing = $this->pdo->prepare('SELECT id, price_cents, price_checked_at FROM shop_offer WHERE product_id = :id');
+            $existing->execute(['id' => $productId]);
+            /** @var array<int, array{price_cents: int|string|null, price_checked_at: ?string}> $current */
+            $current = [];
+            foreach ($existing->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $current[(int) $row['id']] = $row;
+            }
 
             $ins = $this->pdo->prepare(
                 'INSERT INTO shop_offer (product_id, kind, network, external_id, merchant, url,'
@@ -421,12 +439,35 @@ final class ProductRepository
                 . ' VALUES (:pid, :kind, :network, :ext, :merchant, :url,'
                 . ' :price, :currency, :checked, :avail, :pos)',
             );
+            $upd = $this->pdo->prepare(
+                'UPDATE shop_offer SET kind = :kind, network = :network, external_id = :ext, merchant = :merchant,'
+                . ' url = :url, price_cents = :price, currency = :currency, price_checked_at = :checked,'
+                . ' availability = :avail, position = :pos WHERE id = :oid AND product_id = :pid',
+            );
+
+            $kept = [];
             $pos = 0;
             foreach ($offers as $offer) {
                 $kind = self::oneOf($offer['kind'] ?? null, ['own', 'affiliate'], 'affiliate');
                 $price = isset($offer['priceCents']) && $offer['priceCents'] !== ''
                     ? (int) $offer['priceCents'] : null;
-                $ins->execute([
+                $offerId = isset($offer['id']) && ctype_digit((string) $offer['id']) ? (int) $offer['id'] : 0;
+                $known = $offerId > 0 && isset($current[$offerId]) ? $current[$offerId] : null;
+
+                // Our own price is ours to state, so it is current by
+                // definition (DB clock, like every other timestamp here). A
+                // typed affiliate price is not: it keeps the existing stamp
+                // only while it is the price the sync confirmed, and is not
+                // displayed again until the sync confirms the new one.
+                if ($kind === 'own' && $price !== null) {
+                    $checked = (new \DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+                } elseif ($known !== null && $known['price_cents'] !== null && $price !== null && (int) $known['price_cents'] === $price) {
+                    $checked = $known['price_checked_at'];
+                } else {
+                    $checked = null;
+                }
+
+                $params = [
                     'pid' => $productId,
                     'kind' => $kind,
                     'network' => self::oneOf(
@@ -440,18 +481,28 @@ final class ProductRepository
                     'url' => (string) ($offer['url'] ?? ''),
                     'price' => $price,
                     'currency' => (string) ($offer['currency'] ?? 'EUR'),
-                    // Our own price is ours to state, so it is current by
-                    // definition. A manually typed affiliate price is not: it
-                    // gets no timestamp and therefore is not displayed until
-                    // the sync confirms it.
-                    'checked' => ($kind === 'own' && $price !== null) ? gmdate('Y-m-d H:i:s') : null,
+                    'checked' => $checked,
                     'avail' => self::oneOf(
                         $offer['availability'] ?? null,
                         ['in_stock', 'out_of_stock', 'unknown'],
                         'unknown',
                     ),
                     'pos' => $pos++,
-                ]);
+                ];
+
+                if ($known !== null) {
+                    $upd->execute($params + ['oid' => $offerId]);
+                    $kept[] = $offerId;
+                } else {
+                    $ins->execute($params);
+                }
+            }
+
+            // Only offers the editor removed go — and with them, rightly, their
+            // own-product terms and click history.
+            foreach (array_diff(array_keys($current), $kept) as $gone) {
+                $this->pdo->prepare('DELETE FROM shop_offer WHERE id = :oid AND product_id = :pid')
+                    ->execute(['oid' => $gone, 'pid' => $productId]);
             }
 
             // Keep the sort helper in step with the offers it summarises.

@@ -178,7 +178,9 @@ final class OrderRepository
     ): array {
         $totals = self::priceCart($lines, $shipping);
         $token = bin2hex(random_bytes(16));
-        $orderNo = 'TDS-' . gmdate('Ymd') . '-' . strtoupper(substr($token, 0, 6));
+        // The Berlin date the customer ordered on; gmdate() was a day behind
+        // between midnight and 01:00/02:00.
+        $orderNo = 'TDS-' . date('Ymd') . '-' . strtoupper(substr($token, 0, 6));
         $currency = (string) ($lines[0]['currency'] ?? 'EUR');
 
         $this->pdo->beginTransaction();

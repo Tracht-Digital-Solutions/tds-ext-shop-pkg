@@ -448,7 +448,11 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
             }
             $body = (array) ($req->getParsedBody() ?? []);
             $offers = is_array($body['offers'] ?? null) ? $body['offers'] : [];
-            $c->get(ProductRepository::class)->setOffers((int) $args['id'], $offers);
+            $products = $c->get(ProductRepository::class);
+            if (!$products->exists((int) $args['id'])) {
+                return self::json($res, ['error' => 'Not found'], 404);
+            }
+            $products->setOffers((int) $args['id'], $offers);
             return self::json($res, ['ok' => true]);
         });
 
@@ -764,6 +768,12 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
                 return self::json($res, [
                     'error' => 'Für den Versand brauchen wir eine vollständige Lieferanschrift.',
                 ], 422);
+            }
+            // The delivery country is where the goods GO — the same rule as
+            // the billing country above, which alone was checked: any
+            // `shipCountry` passed.
+            if ($basket['hasPhysical'] && $address !== null && !in_array($address['country'], self::allowedCountries(), true)) {
+                return self::json($res, ['error' => 'Wir liefern derzeit nur nach Deutschland.'], 422);
             }
 
             $registry = $c->get(PaymentRegistry::class);
