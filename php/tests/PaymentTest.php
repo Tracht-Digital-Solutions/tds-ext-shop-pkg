@@ -13,6 +13,7 @@ use Tds\Ext\Shop\Payment\StripeProvider;
 use Tds\Ext\Shop\Payment\WebhookNotVerified;
 use Tds\Ext\Shop\Payment\WeroProvider;
 use Tds\Ext\Shop\Service\StripeClient;
+use Tds\Frontend\Contract\Stripe\CurlStripeApi;
 
 /**
  * The payment abstraction.
@@ -44,7 +45,7 @@ final class PaymentTest extends TestCase
 
     private static function stripe(string $secret = self::SECRET): StripeProvider
     {
-        return new StripeProvider(new StripeClient('sk_test_x'), $secret);
+        return new StripeProvider(new StripeClient(new CurlStripeApi('sk_test_x')), $secret);
     }
 
     /* --- the amount ---------------------------------------------------- */
@@ -175,7 +176,7 @@ final class PaymentTest extends TestCase
         // verify right now", not 400, "this is a forgery".
         [$payload, $headers] = self::stripeEvent(['type' => 'checkout.session.completed']);
         $this->expectException(PaymentNotConfigured::class);
-        (new StripeProvider(new StripeClient('sk_test_x'), ''))->receiveWebhook($payload, $headers);
+        (new StripeProvider(new StripeClient(new CurlStripeApi('sk_test_x')), ''))->receiveWebhook($payload, $headers);
     }
 
     public function testRejectsAMalformedSignatureHeader(): void
@@ -217,7 +218,7 @@ final class PaymentTest extends TestCase
     public function testStripeWithoutAKeyIsNotConfigured(): void
     {
         self::assertFalse((new StripeProvider(null, self::SECRET))->isConfigured());
-        self::assertFalse((new StripeProvider(new StripeClient(''), self::SECRET))->isConfigured());
+        self::assertFalse((new StripeProvider(new StripeClient(new CurlStripeApi('')), self::SECRET))->isConfigured());
     }
 
     /* --- PayPal ---------------------------------------------------------- */

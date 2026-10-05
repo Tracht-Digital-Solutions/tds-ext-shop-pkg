@@ -40,6 +40,10 @@ use Tds\Frontend\Contract\SettingsStore;
 use Tds\Frontend\Contract\SiteKeyProtected;
 use Tds\Frontend\Contract\UserContext;
 use Tds\Frontend\Contract\ModuleHttp;
+use Tds\Frontend\Contract\Stripe\StripeWebhookDef;
+use Tds\Frontend\Contract\Stripe\StripeWebhookSource;
+use Tds\Frontend\Contract\Stripe\StripeApi;
+use Tds\Frontend\Contract\Stripe\CurlStripeApi;
 
 /**
  * TDShop backend: the catalogue, the placements that embed it elsewhere, the
@@ -54,7 +58,7 @@ use Tds\Frontend\Contract\ModuleHttp;
  * sales stop, so "no sync" is a state this shop has to survive, not an
  * installation step it is waiting on.
  */
-final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyProtected
+final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyProtected, StripeWebhookSource
 {
     use ModuleHttp;
 
@@ -83,6 +87,18 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
     public function migrations(): array
     {
         return [__DIR__ . '/../db/migrations'];
+    }
+
+    /** Listed in the admin panel under Einstellungen → Zahlungen (Stripe). */
+    public function stripeWebhooks(): array
+    {
+        return [new StripeWebhookDef(
+            'Shop',
+            '/shop/payment/stripe/webhook',
+            ['checkout.session.completed', 'charge.refunded'],
+            self::SETTINGS_NS,
+            'stripe_webhook_secret',
+        )];
     }
 
     public function register(App $app): void
@@ -145,9 +161,17 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
             $c,
         ));
 
-        $c?->set(StripeClient::class, static function ($c): ?StripeClient {
-            $key = self::setting($c, 'stripe_secret_key', 'SHOP_STRIPE_SECRET_KEY', true);
-            return $key === '' ? null : new StripeClient($key);
+        // The shop's own key (settings or SHOP_STRIPE_SECRET_KEY) overrides the
+        // platform account; otherwise the central one from Einstellungen →
+        // Zahlungen (Stripe). Always a client: an unconfigured one answers
+        // isConfigured() === false and the checkout leaves Stripe out.
+        $c?->set(StripeClient::class, static function ($c): StripeClient {
+            $own = self::setting($c, 'stripe_secret_key', 'SHOP_STRIPE_SECRET_KEY', true);
+            if ($own !== '') {
+                return new StripeClient(new CurlStripeApi($own));
+            }
+            $central = $c->has(StripeApi::class) ? $c->get(StripeApi::class) : null;
+            return new StripeClient($central instanceof StripeApi ? $central : new CurlStripeApi(''));
         });
 
         /**

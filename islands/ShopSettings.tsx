@@ -218,15 +218,16 @@ export default function ShopSettings() {
 
       <h3>Stripe</h3>
       <div className="tds-alert tds-alert--info">
-        Für den Verkauf eigener Leistungen. Ohne diese beiden Schlüssel ist der
-        Kauf aus — der Katalog bleibt davon unberührt. Das Webhook-Secret ist
+        Für den Verkauf eigener Leistungen. Der Secret Key ist nur nötig, wenn
+        der Shop ein eigenes Stripe-Konto nutzen soll — sonst gilt das zentrale
+        Konto unter Einstellungen → Zahlungen (Stripe). Das Webhook-Secret ist
         kein Nice-to-have: fehlt es, weist der Webhook <strong>jede</strong>{" "}
         Anfrage ab, statt irgendeinen POST als Zahlung zu akzeptieren.
       </div>
 
       <div className="tds-field-row">
         <label>
-          Secret Key <em>({hint(stripeKeyState)})</em>
+          Secret Key, optional <em>({hint(stripeKeyState)})</em>
           <input
             className="field-boxed"
             type="password"

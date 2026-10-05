@@ -5,7 +5,7 @@ namespace Tds\Ext\Shop\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Tds\Ext\Shop\Domain\OrderRepository;
-use Tds\Ext\Shop\Service\WebhookVerifier;
+use Tds\Frontend\Contract\Stripe\StripeWebhook;
 
 /**
  * The checkout's two load-bearing pieces: the money, and the webhook.
@@ -70,7 +70,7 @@ final class CheckoutTest extends TestCase
         $payload = '{"type":"checkout.session.completed"}';
         $now = 1788782400;
         self::assertTrue(
-            WebhookVerifier::verify($payload, self::sign($payload, $now), self::SECRET, 300, $now),
+            StripeWebhook::verify($payload, self::sign($payload, $now), self::SECRET, 300, $now),
         );
     }
 
@@ -81,7 +81,7 @@ final class CheckoutTest extends TestCase
         $now = 1788782400;
         $header = self::sign('{"type":"checkout.session.completed"}', $now);
         self::assertFalse(
-            WebhookVerifier::verify('{"type":"checkout.session.completed","x":1}', $header, self::SECRET, 300, $now),
+            StripeWebhook::verify('{"type":"checkout.session.completed","x":1}', $header, self::SECRET, 300, $now),
         );
     }
 
@@ -90,7 +90,7 @@ final class CheckoutTest extends TestCase
         $payload = '{"a":1}';
         $now = 1788782400;
         self::assertFalse(
-            WebhookVerifier::verify($payload, self::sign($payload, $now, 'someone_elses'), self::SECRET, 300, $now),
+            StripeWebhook::verify($payload, self::sign($payload, $now, 'someone_elses'), self::SECRET, 300, $now),
         );
     }
 
@@ -101,10 +101,10 @@ final class CheckoutTest extends TestCase
         $payload = '{"a":1}';
         $signedAt = 1788782400;
         self::assertFalse(
-            WebhookVerifier::verify($payload, self::sign($payload, $signedAt), self::SECRET, 300, $signedAt + 600),
+            StripeWebhook::verify($payload, self::sign($payload, $signedAt), self::SECRET, 300, $signedAt + 600),
         );
         self::assertTrue(
-            WebhookVerifier::verify($payload, self::sign($payload, $signedAt), self::SECRET, 300, $signedAt + 60),
+            StripeWebhook::verify($payload, self::sign($payload, $signedAt), self::SECRET, 300, $signedAt + 60),
         );
     }
 
@@ -114,8 +114,8 @@ final class CheckoutTest extends TestCase
         // otherwise a host that forgot to set it accepts any POST as payment.
         $payload = '{"a":1}';
         $now = 1788782400;
-        self::assertFalse(WebhookVerifier::verify($payload, self::sign($payload, $now), '', 300, $now));
-        self::assertFalse(WebhookVerifier::verify($payload, '', self::SECRET, 300, $now));
+        self::assertFalse(StripeWebhook::verify($payload, self::sign($payload, $now), '', 300, $now));
+        self::assertFalse(StripeWebhook::verify($payload, '', self::SECRET, 300, $now));
     }
 
     public function testRejectsAMalformedHeader(): void
@@ -123,7 +123,7 @@ final class CheckoutTest extends TestCase
         $now = 1788782400;
         foreach (['nonsense', 't=,v1=', 'v1=abc', 't=abc,v1=def'] as $header) {
             self::assertFalse(
-                WebhookVerifier::verify('{"a":1}', $header, self::SECRET, 300, $now),
+                StripeWebhook::verify('{"a":1}', $header, self::SECRET, 300, $now),
                 $header,
             );
         }

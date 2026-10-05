@@ -4,8 +4,8 @@ declare(strict_types=1);
 namespace Tds\Ext\Shop\Payment;
 
 use Tds\Ext\Shop\Service\StripeClient;
-use Tds\Ext\Shop\Service\StripeException;
-use Tds\Ext\Shop\Service\WebhookVerifier;
+use Tds\Frontend\Contract\Stripe\StripeException;
+use Tds\Frontend\Contract\Stripe\StripeWebhook;
 
 /**
  * Card payments, through the Checkout Session flow that was already here.
@@ -81,7 +81,7 @@ final class StripeProvider implements PaymentProvider
         if ($this->webhookSecret === '') {
             throw new PaymentNotConfigured('stripe');
         }
-        if (!WebhookVerifier::verify($rawBody, $headers['stripe-signature'] ?? '', $this->webhookSecret)) {
+        if (!StripeWebhook::verify($rawBody, $headers['stripe-signature'] ?? '', $this->webhookSecret)) {
             throw new WebhookNotVerified('stripe');
         }
 

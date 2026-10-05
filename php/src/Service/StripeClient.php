@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 namespace Tds\Ext\Shop\Service;
 
+use Tds\Frontend\Contract\Stripe\StripeApi;
+use Tds\Frontend\Contract\Stripe\StripeException;
+
 /**
  * Thin Stripe client (plain ext-curl, no SDK — the extension convention).
  *
@@ -27,20 +30,23 @@ namespace Tds\Ext\Shop\Service;
  * Sending a visitor straight to Stripe would skip the declaration entirely.
  *
  * The live call cannot be exercised without a Stripe account; the signed
- * webhook path ({@see WebhookVerifier}) is the unit-tested half.
+ * webhook path ({@see \Tds\Frontend\Contract\Stripe\StripeWebhook}) is the unit-tested half.
  */
 final class StripeClient
 {
-    public function __construct(
-        private readonly string $secretKey,
-        private readonly string $baseUrl = 'https://api.stripe.com/v1',
-    ) {
+    /**
+     * The transport is the platform's StripeApi (tds-frontend-contract):
+     * the central account from Einstellungen → Zahlungen, or a module key
+     * that overrides it. This class keeps only the domain call.
+     */
+    public function __construct(private readonly StripeApi $api)
+    {
     }
 
     /** False when no secret key is configured — checkout is then disabled (503). */
     public function isConfigured(): bool
     {
-        return $this->secretKey !== '';
+        return $this->api->isConfigured();
     }
 
     /**
@@ -64,7 +70,7 @@ final class StripeClient
         string $cancelUrl,
         array $metadata = [],
     ): array {
-        $session = $this->post('/checkout/sessions', [
+        $session = $this->api->post('/checkout/sessions', [
             'mode' => 'payment',
             'success_url' => $successUrl,
             'cancel_url' => $cancelUrl,
@@ -96,68 +102,4 @@ final class StripeClient
         ];
     }
 
-    /**
-     * @param  array<string,mixed> $payload
-     * @return array<string,mixed>
-     * @throws StripeException
-     */
-    private function post(string $path, array $payload): array
-    {
-        // Stripe takes form-encoded bodies with bracket notation for nesting,
-        // not JSON. `http_build_query` produces exactly that shape.
-        $body = http_build_query($this->flatten($payload));
-
-        $ch = curl_init($this->baseUrl . $path);
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $body,
-            CURLOPT_HTTPHEADER => [
-                'Authorization: Bearer ' . $this->secretKey,
-                'Content-Type: application/x-www-form-urlencoded',
-            ],
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 15,
-            CURLOPT_CONNECTTIMEOUT => 5,
-        ]);
-
-        $raw = curl_exec($ch);
-        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
-
-        if ($raw === false) {
-            throw new StripeException("transport: {$error}", 0);
-        }
-        $decoded = json_decode((string) $raw, true);
-        if ($status >= 400 || !is_array($decoded)) {
-            $message = is_array($decoded)
-                ? (string) ($decoded['error']['message'] ?? 'unknown')
-                : 'unparseable_response';
-            throw new StripeException($message, $status);
-        }
-        return $decoded;
-    }
-
-    /**
-     * Flatten nested arrays into Stripe's bracket notation.
-     *
-     * @param  array<string,mixed> $data
-     * @return array<string,scalar>
-     */
-    private function flatten(array $data, string $prefix = ''): array
-    {
-        $out = [];
-        foreach ($data as $key => $value) {
-            if ($value === null) {
-                continue;
-            }
-            $name = $prefix === '' ? (string) $key : "{$prefix}[{$key}]";
-            if (is_array($value)) {
-                $out += $this->flatten($value, $name);
-                continue;
-            }
-            $out[$name] = is_bool($value) ? ($value ? 'true' : 'false') : $value;
-        }
-        return $out;
-    }
 }
