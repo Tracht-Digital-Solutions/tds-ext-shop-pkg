@@ -4,8 +4,12 @@
 // settings store (namespace `shop`), encrypted with SETTINGS_ENCRYPTION_KEY —
 // never in .env, and never in a PUBLIC_ variable.
 import ShopSettings from "./ShopSettings.tsx";
+// HYDRATION: `client:visible`, like every other settings section. The host
+// renders a section hidden until /me says the principal may open it; on
+// `client:load` this island hydrated anyway and asked /admin/settings/shop for
+// every portal user, who got a 403 they never saw.
 ---
 
 <div class="tds-settings-section__body">
-  <ShopSettings client:load />
+  <ShopSettings client:visible />
 </div>
