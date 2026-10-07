@@ -53,7 +53,7 @@ const specifiers = [
  * consumers are `tds-customer-frontend`, `tds-admin-frontend` and
  * `tds-core-frontend-api` (composer).
  */
-const PINNED_MINOR_LINE = "0.4";
+const PINNED_MINOR_LINE = "0.5";
 
 /** `@scope/name/pages/Index.astro` → `pages/Index.astro` */
 const subpath = (spec: string) => spec.slice(pkg.name.length + 1);

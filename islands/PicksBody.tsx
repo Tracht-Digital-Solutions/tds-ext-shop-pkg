@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "@tracht-digital-solutions/tds-shared/api";
 import { ProductCard, SkeletonText } from "@tracht-digital-solutions/tds-shared/components";
@@ -26,10 +26,23 @@ const PLACEMENT_KEY = "panel-dashboard";
  * dashboard; an empty box explaining that there is no advertising is worse than
  * the absence it describes. The widget therefore collapses to null, and the
  * dashboard closes over the gap.
+ *
+ * Returning null was not enough on its own: `widgets/PicksWidget.astro` draws
+ * the card and its "Empfehlungen" heading around this island, so an empty slot
+ * still left an empty titled card on every portal dashboard (seen 2026-10-07).
+ * An empty placement therefore hides the dashboard slot it sits in.
  */
 export default function PicksBody() {
   const [placement, setPlacement] = useState<ShopPlacement | null>(null);
   const [loading, setLoading] = useState(true);
+  const marker = useRef<HTMLSpanElement | null>(null);
+  const empty = !loading && (!placement || placement.products.length === 0);
+
+  useEffect(() => {
+    if (!empty) return;
+    const box = marker.current?.closest<HTMLElement>(".widget-slot") ?? marker.current?.closest<HTMLElement>(".tds-widget");
+    if (box) box.hidden = true;
+  }, [empty]);
 
   useEffect(() => {
     let alive = true;
@@ -56,8 +69,9 @@ export default function PicksBody() {
   if (loading) {
     return <SkeletonText lines={2} />;
   }
-  if (!placement || placement.products.length === 0) {
-    return null;
+  if (empty || !placement) {
+    // Only a handle to find the slot by; it renders nothing.
+    return <span ref={marker} hidden />;
   }
 
   // `offer.url` already points at the shop's `/go/{id}` redirect — the API
