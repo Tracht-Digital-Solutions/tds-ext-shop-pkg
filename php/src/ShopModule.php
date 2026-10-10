@@ -29,11 +29,13 @@ use Tds\Ext\Shop\Service\OrderInvoiceBuilder;
 use Tds\Ext\Shop\Service\OrderInvoicing;
 use Tds\Ext\Shop\Service\PaApiException;
 use Tds\Ext\Shop\Service\StripeClient;
+use Tds\Ext\Shop\Support\OrderReferral;
 use Tds\Ext\Shop\Support\PaApiSigner;
 use Tds\Ext\Shop\Support\Shipping;
 use Tds\Ext\Shop\Support\SyncTicker;
 use Tds\Ext\Shop\Support\Withdrawal;
 use Tds\Frontend\Contract\AbstractModule;
+use Tds\Frontend\Contract\Commerce\SaleEvents;
 use Tds\Frontend\Contract\ApiDocSource;
 use Tds\Frontend\Contract\PermissionDef;
 use Tds\Frontend\Contract\SettingsStore;
@@ -977,6 +979,7 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
                 $country,
                 $basket['shipping'],
                 $basket['hasPhysical'] ? $address : null,
+                OrderReferral::fromCheckout($body, self::saleEvents($c)),
             );
             $base = self::shopBaseUrl();
             $first = $basket['lines'][0];
@@ -1034,6 +1037,22 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
          */
         $app->get('/shop/payment-methods', function (Request $req, Response $res) use ($c): Response {
             return self::json($res, ['methods' => $c->get(PaymentRegistry::class)->configured()]);
+        });
+
+        /**
+         * Whose partner code is this — for "Empfohlen von …" at the checkout.
+         *
+         * Browser-called like the rest of `/shop/*`, so not site-key protected.
+         * It answers only the public display name the partner chose, and 404
+         * for anything unknown, paused, or when no referral module is
+         * installed; the checkout then simply shows nothing.
+         */
+        $app->get('/shop/referral/{code:[A-Za-z0-9-]{3,40}}', function (Request $req, Response $res, array $args) use ($c): Response {
+            $match = self::saleEvents($c)?->resolveReferral((string) $args['code']);
+            if ($match === null) {
+                return self::json($res, ['error' => 'Unbekannter Code'], 404);
+            }
+            return self::json($res, ['code' => $match->code, 'name' => $match->displayName]);
         });
 
         /**
@@ -1110,6 +1129,7 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
                      * and an endless redelivery. The try/catch is the second
                      * floor, for the container itself failing to build it.
                      */
+                    $orderId = null;
                     try {
                         $orderId = $orders->idForPayment(
                             $provider->id(),
@@ -1122,8 +1142,31 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
                     } catch (\Throwable $e) {
                         error_log('[tds-shop] invoicing after payment failed: ' . $e->getMessage());
                     }
+
+                    // Tell whoever keeps a ledger (the referral programme). On
+                    // EVERY paid delivery, for the same reason as invoicing;
+                    // listeners are idempotent by (source, id) and SaleEvents
+                    // guards each one, so nothing here can turn into a non-2xx.
+                    try {
+                        $events = self::saleEvents($c);
+                        $order = $orderId !== null ? $orders->byId($orderId) : null;
+                        if ($events !== null && $order !== null && $order['status'] === 'paid') {
+                            $events->paid(OrderReferral::saleEvent($order, $orders->itemsFor($orderId)));
+                        }
+                    } catch (\Throwable $e) {
+                        error_log('[tds-shop] sale event after payment failed: ' . $e->getMessage());
+                    }
                 } elseif ($event->kind === PaymentEvent::REFUNDED) {
                     $orders->markRefunded($provider->id(), $event->paymentRef, $event->orderToken);
+                    try {
+                        $events = self::saleEvents($c);
+                        $orderId = $orders->idForRefund($provider->id(), $event->paymentRef, $event->orderToken);
+                        if ($events !== null && $orderId !== null) {
+                            $events->reversed('shop', (string) $orderId);
+                        }
+                    } catch (\Throwable $e) {
+                        error_log('[tds-shop] sale event after refund failed: ' . $e->getMessage());
+                    }
                 }
             }
 
@@ -1355,6 +1398,21 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
     private const WITHDRAWAL_TEXT = 'Ich verlange ausdrücklich, dass Sie vor Ende der '
         . 'Widerrufsfrist mit der Leistung beginnen. Mir ist bekannt, dass ich mein '
         . 'Widerrufsrecht mit vollständiger Erbringung der Leistung verliere.';
+
+    /**
+     * The contract's sale dispatcher, or null when the base binds none.
+     * `has()` alone is not enough under autowiring (see register()), hence
+     * the `instanceof`; an autowired empty instance is a harmless no-op.
+     */
+    private static function saleEvents(?ContainerInterface $c): ?SaleEvents
+    {
+        try {
+            $events = $c !== null && $c->has(SaleEvents::class) ? $c->get(SaleEvents::class) : null;
+        } catch (\Throwable) {
+            return null;
+        }
+        return $events instanceof SaleEvents ? $events : null;
+    }
 
     private static function shopBaseUrl(): string
     {

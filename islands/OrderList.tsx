@@ -31,6 +31,10 @@ interface Order {
   invoice_error: string | null;
   withdrawal_consent_at: string | null;
   withdrawal_consent_text: string | null;
+  /** Who recommended the purchase; the commission lives in the referral module. */
+  referral_code?: string | null;
+  referral_via?: "link" | "code" | null;
+  referred_by_note?: string | null;
   created_at: string;
 }
 
@@ -164,7 +168,23 @@ export default function OrderList() {
                   <br />
                   <small>{order.email}</small>
                 </td>
-                <td>{order.items ?? "—"}</td>
+                <td>
+                  {order.items ?? "—"}
+                  {order.referral_code ? (
+                    <>
+                      <br />
+                      <small>
+                        Empfohlen: {order.referral_code} ({order.referral_via === "link" ? "Link" : "Code"})
+                      </small>
+                    </>
+                  ) : null}
+                  {order.referred_by_note ? (
+                    <>
+                      <br />
+                      <small>Genannt: „{order.referred_by_note}“</small>
+                    </>
+                  ) : null}
+                </td>
                 <td>{euro(order.gross_cents, order.currency)}</td>
                 <td>
                   <span

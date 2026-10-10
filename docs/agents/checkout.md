@@ -103,3 +103,18 @@ waits in `/shop/bestellungen` until someone does the work and marks it done
   the container by name, guarded by **`class_exists()`**, never `$c->has()` (which autowiring makes
   always true).
 - Nothing in invoicing may throw at its caller.
+
+## Referrals
+
+The shop records who recommended a purchase. It keeps no commission logic; that belongs to
+`tds-ext-referrals-pkg`, behind the contract's `Commerce\SaleEvents` (≥ 1.15).
+
+- `POST /shop/checkout` takes `referral {code, via}` and `referredBy` (free text).
+  `Support\OrderReferral::fromCheckout()` stores a code only when `resolveReferral()` knows
+  it. An unknown code is dropped and never blocks the purchase.
+- `shop_order.referral_code`, `referral_via` and `referred_by_note` are frozen like every
+  other order fact. `byToken()` hides them from the customer view.
+- The webhook calls `SaleEvents::paid()` on **every** PAID delivery, after invoicing, and
+  `reversed()` on REFUNDED. Net is the goods net (sum of lines), never shipping.
+- `GET /shop/referral/{code}` is browser-called (not site-key) and returns only the public
+  display name for "Empfohlen von …".

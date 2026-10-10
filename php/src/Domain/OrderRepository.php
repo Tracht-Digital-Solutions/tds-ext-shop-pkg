@@ -165,6 +165,7 @@ final class OrderRepository
      * @param  list<array<string,mixed>>        $lines    from {@see sellableMany()}
      * @param  array{net:int,tax:int,gross:int} $shipping
      * @param  array<string,string>|null        $address  null when nothing is delivered
+     * @param  array{code:?string,via:?string,note:?string}|null $referral from {@see \Tds\Ext\Shop\Support\OrderReferral::fromCheckout()}
      * @return array{id:int,token:string,orderNo:string,gross:int}
      */
     public function openCart(
@@ -175,6 +176,7 @@ final class OrderRepository
         string $country,
         array $shipping,
         ?array $address = null,
+        ?array $referral = null,
     ): array {
         $totals = self::priceCart($lines, $shipping);
         $token = bin2hex(random_bytes(16));
@@ -190,11 +192,12 @@ final class OrderRepository
                 . ' tax_cents, gross_cents, tax_rate_bp, currency, country,'
                 . ' shipping_net_cents, shipping_tax_cents, shipping_gross_cents,'
                 . ' ship_name, ship_line1, ship_line2, ship_postcode, ship_city, ship_country,'
-                . ' withdrawal_consent_at, withdrawal_consent_text)'
+                . ' withdrawal_consent_at, withdrawal_consent_text,'
+                . ' referral_code, referral_via, referred_by_note)'
                 . " VALUES (:token, :no, :email, :name, 'pending', :net, :tax, :gross,"
                 . ' :rate, :currency, :country, :snet, :stax, :sgross,'
                 . ' :sname, :sline1, :sline2, :spost, :scity, :scountry,'
-                . ' UTC_TIMESTAMP(), :consent)',
+                . ' UTC_TIMESTAMP(), :consent, :rcode, :rvia, :rnote)',
             );
             $stmt->execute([
                 'token' => $token,
@@ -217,6 +220,9 @@ final class OrderRepository
                 'scity' => $address['city'] ?? null,
                 'scountry' => $address['country'] ?? null,
                 'consent' => $withdrawalText,
+                'rcode' => $referral['code'] ?? null,
+                'rvia' => $referral['via'] ?? null,
+                'rnote' => $referral['note'] ?? null,
             ]);
             $orderId = (int) $this->pdo->lastInsertId();
 
@@ -489,6 +495,27 @@ final class OrderRepository
         return $id === false ? null : (int) $id;
     }
 
+    /**
+     * The id of the order a refund event refers to — the same identifiers, in
+     * the same order of preference, as {@see markRefunded()}.
+     */
+    public function idForRefund(string $provider, ?string $paymentRef, ?string $token = null): ?int
+    {
+        if ($paymentRef !== null && $paymentRef !== '') {
+            $sql = 'SELECT id FROM shop_order WHERE provider_payment_ref = :key AND payment_provider = :p LIMIT 1';
+            $key = $paymentRef;
+        } elseif ($token !== null && $token !== '') {
+            $sql = 'SELECT id FROM shop_order WHERE token = :key AND payment_provider = :p LIMIT 1';
+            $key = $token;
+        } else {
+            return null;
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['key' => $key, 'p' => $provider]);
+        $id = $stmt->fetchColumn();
+        return $id === false ? null : (int) $id;
+    }
+
     /** The customer-facing order view. The token IS the authorisation. */
     public function byToken(string $token): ?array
     {
@@ -517,6 +544,11 @@ final class OrderRepository
             $order['invoice_error'],
             $order['invoice_attempts'],
             $order['invoice_file_id'],
+            // The buyer typed the note and knows the code; neither belongs on
+            // a page anyone holding the link can open.
+            $order['referral_code'],
+            $order['referral_via'],
+            $order['referred_by_note'],
         );
         $order['items'] = $items->fetchAll(PDO::FETCH_ASSOC) ?: [];
         return $order;

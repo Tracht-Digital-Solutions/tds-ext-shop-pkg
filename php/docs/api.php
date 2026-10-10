@@ -349,6 +349,11 @@ return [
             ['name' => 'withdrawalConsent', 'in' => 'body', 'description' => 'Muss `true` sein.'],
             ['name' => 'withdrawalText', 'in' => 'body', 'description' => 'Der exakt angezeigte '
                 . 'Wortlaut; wird in der Bestellung mitgespeichert, nicht nur referenziert.'],
+            ['name' => 'referral', 'in' => 'body', 'description' => 'Optional `{code, via}`, `via` = '
+                . '`link` (aus `?ref=`) oder `code` (getippt). Ein unbekannter Code wird verworfen, '
+                . 'nie abgelehnt.'],
+            ['name' => 'referredBy', 'in' => 'body', 'description' => 'Optional, Freitext „Wer hat '
+                . 'dich empfohlen?“; wird zur Nennung, die der Betreiber zuordnet.'],
         ],
         'responses' => [
             ['status' => 200, 'description' => '`{url, token}` — `url` fuehrt zum Anbieter.'],
@@ -356,6 +361,22 @@ return [
             ['status' => 422, 'description' => 'E-Mail, Widerrufsbestaetigung oder Land.'],
             ['status' => 502, 'description' => 'Der Anbieter hat die Zahlung abgelehnt.'],
             ['status' => 503, 'description' => 'Kein Anbieter konfiguriert.'],
+        ],
+    ],
+    [
+        'method' => 'GET',
+        'pattern' => '/shop/referral/{code:[A-Za-z0-9-]{3,40}}',
+        'summary' => 'Empfehlungscode pruefen (fuer „Empfohlen von …“)',
+        'description' => 'Vom Browser des Besuchers aufgerufen, deshalb NICHT site-key-geschuetzt. '
+            . 'Fragt ueber `Commerce\SaleEvents` das Empfehlungsprogramm und liefert nur den '
+            . 'oeffentlichen Anzeigenamen. 404 fuer unbekannte oder pausierte Codes und wenn kein '
+            . 'Empfehlungsprogramm installiert ist.',
+        'auth' => 'public',
+        'tag' => 'Kauf',
+        'params' => [['name' => 'code', 'in' => 'path', 'description' => 'Partnercode, Gross-/Kleinschreibung egal.']],
+        'responses' => [
+            ['status' => 200, 'description' => '`{code, name}` — `code` in kanonischer Schreibweise.'],
+            ['status' => 404, 'description' => 'Kein aktiver Partner mit diesem Code.'],
         ],
     ],
     [
