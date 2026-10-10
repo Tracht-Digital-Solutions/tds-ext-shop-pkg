@@ -50,11 +50,20 @@ final class ShopCatalogueSeedTest extends TestCase
     /** @return list<array<string,mixed>> */
     private static function all(): array
     {
-        $affiliate = is_file(CatalogueSeed::dir() . '/affiliate.php') ? CatalogueSeed::load('affiliate.php') : [];
-        foreach ($affiliate as &$p) {
-            $p['_file'] = 'affiliate.php';
+        return array_merge(self::own(), self::affiliate());
+    }
+
+    /** @return list<array<string,mixed>> every `affiliate*.php` batch */
+    private static function affiliate(): array
+    {
+        $all = [];
+        foreach (glob(CatalogueSeed::dir() . '/affiliate*.php') ?: [] as $path) {
+            foreach (CatalogueSeed::load(basename($path)) as $product) {
+                $product['_file'] = basename($path);
+                $all[] = $product;
+            }
         }
-        return array_merge(self::own(), $affiliate);
+        return $all;
     }
 
     public function test_there_are_at_least_fifty_own_products(): void
@@ -164,11 +173,10 @@ final class ShopCatalogueSeedTest extends TestCase
 
     public function test_affiliate_products_carry_an_asin_and_no_price(): void
     {
-        if (!is_file(CatalogueSeed::dir() . '/affiliate.php')) {
-            self::markTestSkipped('No affiliate seed yet.');
-        }
-        $affiliate = CatalogueSeed::load('affiliate.php');
-        self::assertGreaterThanOrEqual(20, count($affiliate));
+        $affiliate = self::affiliate();
+        self::assertGreaterThanOrEqual(50, count($affiliate));
+        $asins = array_column($affiliate, 'asin');
+        self::assertSame(array_unique($asins), $asins, 'an ASIN is seeded twice');
         foreach ($affiliate as $p) {
             self::assertSame('affiliate', $p['kind']);
             self::assertMatchesRegularExpression('/^B0[0-9A-Z]{8}$/', $p['asin'], $p['de']['slug']);

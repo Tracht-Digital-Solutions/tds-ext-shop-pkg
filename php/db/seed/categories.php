@@ -196,6 +196,23 @@ return [
         ],
     ],
     [
+        'slug' => 'unterwegs',
+        'name_de' => 'Mobiles Arbeiten',
+        'name_en' => 'Working on the go',
+        'intro_de' => 'Laptop, Ladegerät und ein sicheres Netz: Ausstattung, mit der Sie im Zug, beim Kunden und im Hotel arbeiten wie im Büro.',
+        'intro_en' => 'Laptop, charger and a safe network: kit that lets you work on the train, at a client and in a hotel as you would in the office.',
+        'faq_de' => [
+            ['q' => 'Verdienen Sie an den Links?', 'a' => 'Ja, eine kleine Provision. Der Preis für Sie ändert sich dadurch nicht.'],
+            ['q' => 'Was brauche ich unterwegs zuerst?', 'a' => 'Ein Ladegerät für alle Geräte und eine sichere Verbindung statt offenem Hotel-WLAN.'],
+            ['q' => 'Warum steht kein Preis da?', 'a' => 'Partnerpreise zeige ich nur, wenn sie jünger als 24 Stunden sind.'],
+        ],
+        'faq_en' => [
+            ['q' => 'Do you earn from these links?', 'a' => 'Yes, a small commission. Your price does not change.'],
+            ['q' => 'What do I need first on the go?', 'a' => 'One charger for every device and a secure connection instead of open hotel Wi-Fi.'],
+            ['q' => 'Why is there no price?', 'a' => 'I only show partner prices younger than 24 hours.'],
+        ],
+    ],
+    [
         'slug' => 'sicherheit',
         'name_de' => 'IT-Sicherheit',
         'name_en' => 'IT security',

@@ -95,4 +95,6 @@ draft that already passes `Support\ProductReadiness`, so the operator only press
 - Add products in a NEW migration with a new data file; a ran migration never re-reads its file.
 - Own price = landing-page hourly rate × hours; the body says „inklusive 19 %“ (the shop shows gross).
 - Affiliate rows carry only the ASIN. Price, partner-tagged URL and cover come from `OfferSync`.
+- Affiliate slugs are embedded in seeded journal articles (tds-ext-blog-cms, `{{produkt:<slug>}}`,
+  per language). Renaming one blanks that card silently; the blog-cms seed test catches it.
 - Cover prompts: `php scripts/image-prompts.php` → `docs/product-image-prompts.md`.
