@@ -85,3 +85,14 @@ extension is switched on.
 
 `SHOP_PUBLIC_URL` on the API host overrides the shop origin used for product and click-redirect
 URLs. It has a coded default, so the catalogue answers on an unconfigured host.
+
+## Prepared catalogue
+
+`php/db/seed/*.php` holds the prepared products and categories as plain arrays;
+`Support\CatalogueSeed` writes them from migrations (`20261010000002`). Everything lands as a
+draft that already passes `Support\ProductReadiness`, so the operator only presses „Freigeben“.
+
+- Add products in a NEW migration with a new data file; a ran migration never re-reads its file.
+- Own price = landing-page hourly rate × hours; the body says „inklusive 19 %“ (the shop shows gross).
+- Affiliate rows carry only the ASIN. Price, partner-tagged URL and cover come from `OfferSync`.
+- Cover prompts: `php scripts/image-prompts.php` → `docs/product-image-prompts.md`.

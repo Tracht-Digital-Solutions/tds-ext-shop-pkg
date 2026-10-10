@@ -146,6 +146,10 @@ final class OfferSync
         $update = $this->pdo->prepare(
             'UPDATE shop_offer SET price_cents = :price, currency = :currency,'
             . ' availability = :availability, price_checked_at = UTC_TIMESTAMP(),'
+            // Amazon's DetailPageURL carries the partner tag. Taking it over
+            // means an offer created from a bare ASIN earns from its first
+            // sync, and a changed tag reaches every offer within one round.
+            . " url = COALESCE(NULLIF(:url, ''), url),"
             . ' raw = :raw WHERE id = :id',
         );
 
@@ -162,6 +166,7 @@ final class OfferSync
                 'price' => $item['priceCents'],
                 'currency' => $item['currency'],
                 'availability' => $item['availability'],
+                'url' => self::isAmazonPage((string) ($item['url'] ?? '')) ? (string) $item['url'] : '',
                 'raw' => json_encode($item, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
                 'id' => (int) $row['offer_id'],
             ]);
@@ -220,6 +225,12 @@ final class OfferSync
             $this->pdo->prepare('UPDATE shop_media SET url = :url WHERE id = :id')
                 ->execute(['url' => $imageUrl, 'id' => (int) $current['id']]);
         }
+    }
+
+    private static function isAmazonPage(string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        return str_starts_with($url, 'https://') && ($host === 'amazon.de' || str_ends_with($host, '.amazon.de'));
     }
 
     private static function isAmazonImage(string $url): bool

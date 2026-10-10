@@ -40,6 +40,7 @@ The suites target failures with no other symptom.
 | `php/tests/PaApiSignerTest.php`, `UtcDateTimeTest.php`, `ProductOffersTest.php` | SigV4 signing, UTC reads (run in Europe/Berlin), offers |
 | `php/tests/ShopSeedServicePackagesTest.php`, `CategoryNameTest.php` | Seeded service packages, category names |
 | `php/tests/ProductReadinessTest.php` | The publish gate: markdown-only bodies, inclusive 80–160 meta bounds (multibyte), meta title rescuing a long heading, own vs. fresh partner price; `PairList` dropping half rows |
+| `php/tests/ShopCatalogueSeedTest.php` | Every prepared product (`php/db/seed/`) passes the publish gate as seeded, slugs are unique incl. the September packages, prices follow the hourly rates, bodies say „inklusive“ |
 | `php/tests/ProductUpsertBodyTest.php` (DB) | A save without `body` keeps the text — the panel form once wiped every seeded package |
 | `src/index.test.ts` | Manifest; the permissionless widget set is exactly `["shop-picks"]` |
 | `islands/WidgetBody.test.tsx`, `islands/PicksBody.test.tsx` | Dash (never zero) on failure; absolute URL |
