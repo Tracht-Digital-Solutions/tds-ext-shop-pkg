@@ -42,6 +42,8 @@ const specifiers = [
  * withdrawal regime did — three providers behind one interface, and a
  * migration that renames the order's payment columns, is not something a
  * consumer should pick up without noticing.
+ * Moved to `0.6` with the publish gate and the prepared catalogue: a save
+ * no longer publishes, which an older panel build would not know.
  *
  * Moving it is a deliberate act with a required order: **release the new minor
  * first, then widen the products' ranges.** Doing it the other way round leaves
@@ -53,7 +55,7 @@ const specifiers = [
  * consumers are `tds-customer-frontend`, `tds-admin-frontend` and
  * `tds-core-frontend-api` (composer).
  */
-const PINNED_MINOR_LINE = "0.5";
+const PINNED_MINOR_LINE = "0.6";
 
 /** `@scope/name/pages/Index.astro` → `pages/Index.astro` */
 const subpath = (spec: string) => spec.slice(pkg.name.length + 1);
