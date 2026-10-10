@@ -113,6 +113,9 @@ export default function ProductList() {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editingId, setEditingId] = useState<number | null>(null);
+  // The editor is closed by default: with a prepared catalogue the usual task
+  // is releasing, not typing, so the list with "Freigeben" comes first.
+  const [creating, setCreating] = useState(false);
   const [loadingEditor, setLoadingEditor] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
@@ -208,6 +211,7 @@ export default function ProductList() {
       toast.success(editingId === null ? "Produkt angelegt." : "Produkt gespeichert.");
       setForm({ ...EMPTY_FORM });
       setEditingId(null);
+      setCreating(false);
       await load();
     } catch {
       toast.danger("Speichern fehlgeschlagen — keine Verbindung zur API.");
@@ -225,6 +229,9 @@ export default function ProductList() {
   const edit = async (product: Product, lang: Lang) => {
     const translation = product.translations[lang];
     setEditingId(product.id);
+    setCreating(false);
+    // The form opens above the list; bring it into view.
+    requestAnimationFrame(() => document.getElementById("shop-product-editor")?.scrollIntoView({ block: "start" }));
     const base = {
       ...EMPTY_FORM,
       lang,
@@ -344,6 +351,12 @@ export default function ProductList() {
   }
 
   const pageTitle = form.metaTitle.trim() || form.title;
+  const editorOpen = creating || editingId !== null;
+  const closeEditor = () => {
+    setEditingId(null);
+    setCreating(false);
+    setForm({ ...EMPTY_FORM });
+  };
 
   return (
     <>
@@ -357,8 +370,17 @@ export default function ProductList() {
           cross-fade makes that visible. Keyed by product, NOT by language:
           the language select lives in this form, and a re-keyed form would
           take the focus off it on every change. */}
+      {!editorOpen ? (
+        <div className="tds-toolbar">
+          <button type="button" className="btn btn-ghost" onClick={() => setCreating(true)}>
+            + Neues Produkt
+          </button>
+        </div>
+      ) : null}
+
+      {editorOpen ? (
       <Presence view={editingId === null ? "new" : `product-${editingId}`}>
-        <form className="tds-card" onSubmit={save} aria-busy={loadingEditor}>
+        <form id="shop-product-editor" className="tds-card" onSubmit={save} aria-busy={loadingEditor}>
           <h2>{editingId === null ? "Neues Produkt" : `Produkt #${editingId} bearbeiten`}</h2>
 
           <div className="tds-field-row">
@@ -533,21 +555,13 @@ export default function ProductList() {
             <button type="submit" className="btn btn-primary" disabled={saving || loadingEditor} aria-busy={saving}>
               {editingId === null ? "Anlegen" : "Speichern"}
             </button>
-            {editingId !== null ? (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => {
-                  setEditingId(null);
-                  setForm({ ...EMPTY_FORM });
-                }}
-              >
-                Abbrechen
-              </button>
-            ) : null}
+            <button type="button" className="btn btn-ghost" onClick={closeEditor}>
+              Abbrechen
+            </button>
           </div>
         </form>
       </Presence>
+      ) : null}
 
       <div className="tds-toolbar" role="group" aria-label="Produkte filtern">
         {(Object.keys(FILTER_LABEL) as Filter[]).map((key) => (
