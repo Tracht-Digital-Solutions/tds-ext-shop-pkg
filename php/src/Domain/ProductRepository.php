@@ -364,12 +364,18 @@ final class ProductRepository
                 ]);
             }
 
+            // The body is only rewritten when the request carries one. The panel's
+            // product form edits the metadata alone; overwriting with NULL and the
+            // `blocks` default wiped every seeded markdown text on its first save.
+            $bodyUpdate = array_key_exists('body', $data)
+                ? ' body = VALUES(body), body_format = VALUES(body_format),'
+                : '';
             $tr = $this->pdo->prepare(
                 'INSERT INTO shop_product_translation'
                 . ' (product_id, lang, slug, title, teaser, body, body_format, meta_description, machine_translated)'
                 . ' VALUES (:pid, :lang, :slug, :title, :teaser, :body, :format, :meta, 0)'
                 . ' ON DUPLICATE KEY UPDATE slug = VALUES(slug), title = VALUES(title),'
-                . ' teaser = VALUES(teaser), body = VALUES(body), body_format = VALUES(body_format),'
+                . ' teaser = VALUES(teaser),' . $bodyUpdate
                 // A hand-edited translation stops being a machine translation.
                 . ' meta_description = VALUES(meta_description), machine_translated = 0',
             );
