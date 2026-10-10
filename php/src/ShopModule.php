@@ -125,6 +125,18 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
         }
         try {
             $items[] = [
+                'id' => 'shop:stripe-webhook',
+                'module' => 'shop',
+                'title' => 'Shop: Stripe-Webhook',
+                'description' => 'Ohne Webhook-Geheimnis meldet Stripe keine Zahlung zurück: bezahlte Bestellungen bleiben offen und bekommen keine Rechnung.',
+                'state' => self::setting($c, 'stripe_webhook_secret', 'SHOP_STRIPE_WEBHOOK_SECRET', true) !== '' ? 'ok' : 'missing',
+                'level' => 'recommended',
+                'href' => '/einstellungen#settings-stripe',
+            ];
+        } catch (\Throwable) {
+        }
+        try {
+            $items[] = [
                 'id' => 'shop:amazon',
                 'module' => 'shop',
                 'title' => 'Shop: Amazon-Partnerprogramm',
