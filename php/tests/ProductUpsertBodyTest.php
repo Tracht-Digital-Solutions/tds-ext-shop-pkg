@@ -39,7 +39,8 @@ final class ProductUpsertBodyTest extends TestCase
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, product_id INT UNSIGNED NOT NULL, lang CHAR(2) NOT NULL,
             slug VARCHAR(200) NOT NULL, title VARCHAR(300) NOT NULL, teaser VARCHAR(500) NOT NULL,
             body MEDIUMTEXT NULL, body_format VARCHAR(20) NOT NULL DEFAULT 'blocks',
-            meta_description VARCHAR(300) NULL, machine_translated TINYINT NOT NULL DEFAULT 0,
+            meta_description VARCHAR(300) NULL, meta_title VARCHAR(70) NULL, summary VARCHAR(400) NULL,
+            facts TEXT NULL, faq TEXT NULL, machine_translated TINYINT NOT NULL DEFAULT 0,
             UNIQUE KEY uq_product_lang (product_id, lang),
             FOREIGN KEY (product_id) REFERENCES shop_product(id) ON DELETE CASCADE) ENGINE=InnoDB");
         $this->pdo->exec("INSERT INTO shop_product (id, kind, status, editorial_status, category)

@@ -224,6 +224,51 @@ return [
         'responses' => [['status' => 200, 'description' => '`{ok: true}`']],
     ],
     [
+        'method' => 'POST',
+        'pattern' => '/shop/products/{id:[0-9]+}/publish',
+        'summary' => 'Produkt freigeben',
+        'description' => 'Setzt den Status auf `published`, aber nur wenn das Produkt vollständig ist: '
+            . 'Text in Markdown, Meta-Beschreibung 80–160 Zeichen und Seitentitel ≤ 65 Zeichen in DE '
+            . 'und EN, Titelbild, benannte Kategorie und ein Preis (eigener Festpreis oder ein '
+            . 'Partnerpreis jünger als 24 Stunden). `published_at` wird nur beim ersten Mal gestempelt.',
+        'auth' => 'permission',
+        'permission' => 'shop:write',
+        'tag' => 'Verwaltung',
+        'params' => [['name' => 'id', 'in' => 'path', 'description' => 'Produkt-ID.']],
+        'responses' => [
+            ['status' => 200, 'description' => '`{ok: true}`'],
+            ['status' => 422, 'description' => '`{error, problems: [{code, message}]}` — was noch fehlt.'],
+            ['status' => 404, 'description' => 'Produkt unbekannt.'],
+        ],
+    ],
+    [
+        'method' => 'POST',
+        'pattern' => '/shop/products/{id:[0-9]+}/unpublish',
+        'summary' => 'Produkt zurückziehen',
+        'description' => 'Zurück auf Entwurf. `published_at` bleibt, damit eine erneute Freigabe die '
+            . 'Reihenfolge im Katalog nicht verschiebt.',
+        'auth' => 'permission',
+        'permission' => 'shop:write',
+        'tag' => 'Verwaltung',
+        'params' => [['name' => 'id', 'in' => 'path', 'description' => 'Produkt-ID.']],
+        'responses' => [['status' => 200, 'description' => '`{ok: true}`']],
+    ],
+    [
+        'method' => 'POST',
+        'pattern' => '/shop/products/publish',
+        'summary' => 'Mehrere Produkte freigeben',
+        'description' => 'Nicht alles-oder-nichts: vollständige Produkte gehen live, die übrigen kommen '
+            . 'mit ihren Gründen zurück.',
+        'auth' => 'permission',
+        'permission' => 'shop:write',
+        'tag' => 'Verwaltung',
+        'params' => [['name' => 'ids', 'in' => 'body', 'description' => 'Liste von 1–200 Produkt-IDs.']],
+        'responses' => [
+            ['status' => 200, 'description' => '`{published: [id], refused: {id: [{code, message}]}}`'],
+            ['status' => 422, 'description' => 'Keine oder zu viele IDs.'],
+        ],
+    ],
+    [
         'method' => 'GET',
         'pattern' => '/shop/placements',
         'summary' => 'Alle Werbeplätze',

@@ -32,7 +32,8 @@ composer install && composer test   # phpunit
 - Checkout needs the withdrawal consent wording for service lines; our `/kasse` page carries the order button.
 - `WeroProvider` stays unconfigured until `docs/wero-adapter.md` is done.
 - Call the API with `apiFetch`. Toast methods must exist (`tests/islandToasts.test.ts`). Never mount a `ToastHost`.
-- Migrations: shop prefix, unsigned integer FKs. Stay in the `0.5.x` line; versions via the release workflow.
+- Migrations: shop prefix, unsigned integer FKs. Stay in the `0.6.x` line; versions via the release workflow.
+- Going live is `POST /shop/products/{id}/publish`, gated by `Support\ProductReadiness`; a save never publishes.
 
 ## Topic files
 

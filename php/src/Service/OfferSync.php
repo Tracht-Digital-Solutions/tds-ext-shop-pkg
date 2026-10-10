@@ -165,6 +165,7 @@ final class OfferSync
                 'raw' => json_encode($item, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
                 'id' => (int) $row['offer_id'],
             ]);
+            $this->applyCover((int) $row['offer_id'], $item['imageUrl'] ?? null);
             $written++;
         }
 
@@ -179,5 +180,51 @@ final class OfferSync
         );
 
         return [$written, $missed];
+    }
+
+    /**
+     * Give an affiliate product Amazon's own picture.
+     *
+     * A product seeded by ASIN has text but no cover until Amazon answers, and
+     * the licence requires the image to be served from Amazon's CDN URL as
+     * returned — so it is stored as a `remote` cover, never downloaded. An
+     * editor's own cover (an upload, or any non-Amazon URL) is never replaced;
+     * a previous Amazon URL is, because Amazon rotates them.
+     */
+    private function applyCover(int $offerId, mixed $imageUrl): void
+    {
+        if (!is_string($imageUrl) || !str_starts_with($imageUrl, 'https://')) {
+            return;
+        }
+        $pid = $this->pdo->prepare('SELECT product_id FROM shop_offer WHERE id = :id');
+        $pid->execute(['id' => $offerId]);
+        $productId = $pid->fetchColumn();
+        if ($productId === false) {
+            return;
+        }
+        $cover = $this->pdo->prepare(
+            "SELECT id, source, url FROM shop_media WHERE product_id = :pid AND role = 'cover'"
+            . ' ORDER BY sort ASC, id ASC LIMIT 1',
+        );
+        $cover->execute(['pid' => (int) $productId]);
+        $current = $cover->fetch(\PDO::FETCH_ASSOC);
+
+        if ($current === false) {
+            $this->pdo->prepare(
+                "INSERT INTO shop_media (product_id, role, source, url, alt, sort) VALUES (:pid, 'cover', 'remote', :url, '', 0)",
+            )->execute(['pid' => (int) $productId, 'url' => $imageUrl]);
+            return;
+        }
+        if ((string) $current['source'] === 'remote' && self::isAmazonImage((string) ($current['url'] ?? ''))
+            && $current['url'] !== $imageUrl) {
+            $this->pdo->prepare('UPDATE shop_media SET url = :url WHERE id = :id')
+                ->execute(['url' => $imageUrl, 'id' => (int) $current['id']]);
+        }
+    }
+
+    private static function isAmazonImage(string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        return $host !== '' && (str_ends_with($host, 'media-amazon.com') || str_ends_with($host, 'ssl-images-amazon.com'));
     }
 }

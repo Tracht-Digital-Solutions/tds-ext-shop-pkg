@@ -440,6 +440,11 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
             if (($error = self::validateProduct($body)) !== null) {
                 return self::json($res, ['error' => $error], 422);
             }
+            // A new product is never complete in one language, so it never
+            // starts out live; the publish action takes it there.
+            if (($body['status'] ?? null) === 'published') {
+                $body['status'] = 'draft';
+            }
             $id = $c->get(ProductRepository::class)->upsert(null, self::lang($body['lang'] ?? null), $body);
             return self::json($res, ['id' => $id], 201);
         });
@@ -449,12 +454,19 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
                 return $deny;
             }
             $repo = $c->get(ProductRepository::class);
-            if ($repo->adminOne((int) $args['id']) === null) {
+            $current = $repo->adminOne((int) $args['id']);
+            if ($current === null) {
                 return self::json($res, ['error' => 'Not found'], 404);
             }
             $body = (array) ($req->getParsedBody() ?? []);
             if (($error = self::validateProduct($body)) !== null) {
                 return self::json($res, ['error' => $error], 422);
+            }
+            // Going live through a save would skip the completeness check the
+            // publish action makes. A product that is already live may keep
+            // sending its status.
+            if (($body['status'] ?? null) === 'published' && $current['product']['status'] !== 'published') {
+                return self::json($res, ['error' => 'Zum Freigeben die Aktion „Freigeben“ verwenden.'], 422);
             }
             $repo->upsert((int) $args['id'], self::lang($body['lang'] ?? null), $body);
             return self::json($res, ['ok' => true]);
@@ -467,6 +479,69 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
             return $c->get(ProductRepository::class)->delete((int) $args['id'])
                 ? self::json($res, ['ok' => true])
                 : self::json($res, ['error' => 'Not found'], 404);
+        });
+
+        // Going live is its own action rather than the status select: it is
+        // the one step that has to check the product is complete, and a select
+        // that also saves slug and title cannot refuse half of a request.
+        $app->post('/shop/products/{id:[0-9]+}/publish', function (Request $req, Response $res, array $args) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'shop:write', $res)) !== null) {
+                return $deny;
+            }
+            $repo = $c->get(ProductRepository::class);
+            $problems = $repo->problems((int) $args['id']);
+            if ($problems === null) {
+                return self::json($res, ['error' => 'Not found'], 404);
+            }
+            if ($problems !== []) {
+                return self::json($res, ['error' => 'Produkt ist noch nicht vollständig.', 'problems' => $problems], 422);
+            }
+            $repo->setStatus((int) $args['id'], 'published');
+            return self::json($res, ['ok' => true]);
+        });
+
+        $app->post('/shop/products/{id:[0-9]+}/unpublish', function (Request $req, Response $res, array $args) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'shop:write', $res)) !== null) {
+                return $deny;
+            }
+            $repo = $c->get(ProductRepository::class);
+            if (!$repo->exists((int) $args['id'])) {
+                return self::json($res, ['error' => 'Not found'], 404);
+            }
+            $repo->setStatus((int) $args['id'], 'draft');
+            return self::json($res, ['ok' => true]);
+        });
+
+        // Several at once. Not all-or-nothing: the complete ones go live and
+        // the rest come back with their reasons, which is what an editor
+        // releasing fifty seeded products wants to see.
+        $app->post('/shop/products/publish', function (Request $req, Response $res) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'shop:write', $res)) !== null) {
+                return $deny;
+            }
+            $body = (array) ($req->getParsedBody() ?? []);
+            $ids = array_values(array_unique(array_filter(
+                array_map('intval', is_array($body['ids'] ?? null) ? $body['ids'] : []),
+                static fn (int $id): bool => $id > 0,
+            )));
+            if ($ids === [] || count($ids) > 200) {
+                return self::json($res, ['error' => '1 bis 200 Produkt-IDs angeben.'], 422);
+            }
+            $repo = $c->get(ProductRepository::class);
+            $published = [];
+            $refused = [];
+            foreach ($ids as $id) {
+                $problems = $repo->problems($id);
+                if ($problems === null) {
+                    $refused[(string) $id] = [['code' => 'not_found', 'message' => 'Produkt nicht gefunden.']];
+                } elseif ($problems !== []) {
+                    $refused[(string) $id] = $problems;
+                } else {
+                    $repo->setStatus($id, 'published');
+                    $published[] = $id;
+                }
+            }
+            return self::json($res, ['published' => $published, 'refused' => (object) $refused]);
         });
 
         $app->put('/shop/products/{id:[0-9]+}/offers', function (Request $req, Response $res, array $args) use ($c): Response {
@@ -530,6 +605,7 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
                 $slug,
                 \Tds\Ext\Shop\Support\CategoryName::clean($body['nameDe'] ?? null),
                 \Tds\Ext\Shop\Support\CategoryName::clean($body['nameEn'] ?? null),
+                array_intersect_key($body, array_flip(['introDe', 'introEn', 'faqDe', 'faqEn'])),
             );
             return self::json($res, ['ok' => true]);
         });

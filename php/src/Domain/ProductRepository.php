@@ -5,6 +5,8 @@ namespace Tds\Ext\Shop\Domain;
 
 use PDO;
 use Tds\Ext\Shop\Support\CategoryName;
+use Tds\Ext\Shop\Support\PairList;
+use Tds\Ext\Shop\Support\ProductReadiness;
 use Tds\Ext\Shop\Support\PriceFreshness;
 use Tds\Ext\Shop\Support\UtcDateTime;
 
@@ -72,7 +74,7 @@ final class ProductRepository
         }
 
         $sql = 'SELECT p.id, p.kind, p.category, p.tags, p.brand, p.published_at, p.editorial_status,'
-            . ' t.slug, t.title, t.teaser, t.meta_description, t.machine_translated'
+            . ' t.slug, t.title, t.teaser, t.meta_description, t.meta_title, t.summary, t.machine_translated'
             . ' FROM shop_product p'
             . ' JOIN shop_product_translation t ON t.product_id = p.id'
             . ' WHERE ' . implode(' AND ', $where)
@@ -98,7 +100,8 @@ final class ProductRepository
     {
         $stmt = $this->pdo->prepare(
             'SELECT p.id, p.kind, p.category, p.tags, p.brand, p.published_at, p.updated_at, p.editorial_status,'
-            . ' t.slug, t.title, t.teaser, t.body, t.body_format, t.meta_description, t.machine_translated'
+            . ' t.slug, t.title, t.teaser, t.body, t.body_format, t.meta_description, t.meta_title,'
+            . ' t.summary, t.facts, t.faq, t.machine_translated'
             . ' FROM shop_product p'
             . ' JOIN shop_product_translation t ON t.product_id = p.id'
             . ' WHERE ' . self::PUBLISHED . ' AND t.lang = :lang AND t.slug = :slug'
@@ -114,6 +117,8 @@ final class ProductRepository
         $out['body'] = (string) ($row['body'] ?? '');
         $out['bodyFormat'] = (string) ($row['body_format'] ?? 'blocks');
         $out['updatedAt'] = self::iso($row['updated_at'] ?? null);
+        $out['facts'] = PairList::decode($row['facts'] ?? null, 'label', 'value');
+        $out['faq'] = PairList::decode($row['faq'] ?? null, 'q', 'a');
         return $out;
     }
 
@@ -136,7 +141,7 @@ final class ProductRepository
         if (($placement['strategy'] ?? 'auto') === 'manual') {
             $stmt = $this->pdo->prepare(
                 'SELECT p.id, p.kind, p.category, p.tags, p.brand, p.published_at, p.editorial_status,'
-                . ' t.slug, t.title, t.teaser, t.meta_description, t.machine_translated'
+                . ' t.slug, t.title, t.teaser, t.meta_description, t.meta_title, t.summary, t.machine_translated'
                 . ' FROM shop_placement_item i'
                 . ' JOIN shop_product p ON p.id = i.product_id'
                 . ' JOIN shop_product_translation t ON t.product_id = p.id AND t.lang = :lang'
@@ -178,6 +183,7 @@ final class ProductRepository
         );
         $stmt->execute(['lang' => $lang]);
         $names = $this->categoryNames();
+        $copy = $this->categoryCopy($lang);
         $out = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
             $slug = (string) $row['category'];
@@ -185,9 +191,37 @@ final class ProductRepository
                 'category' => $slug,
                 'label' => CategoryName::resolve($slug, $names[$slug][0] ?? null, $names[$slug][1] ?? null, $lang),
                 'total' => (int) $row['total'],
+                'intro' => $copy[$slug]['intro'] ?? null,
+                'faq' => $copy[$slug]['faq'] ?? [],
             ];
         }
         return $out;
+    }
+
+    /**
+     * Intro and FAQ per category in `$lang`. No fallback to German for the
+     * English site: an English page with a German intro is worse than one
+     * without. Fail-soft like {@see categoryNames()} — the columns arrive with
+     * a later migration than the table.
+     *
+     * @return array<string, array{intro: ?string, faq: list<array<string,string>>}>
+     */
+    private function categoryCopy(string $lang): array
+    {
+        $suffix = $lang === 'en' ? 'en' : 'de';
+        try {
+            $stmt = $this->pdo->query("SELECT slug, intro_{$suffix} AS intro, faq_{$suffix} AS faq FROM shop_category");
+            $out = [];
+            foreach (($stmt === false ? [] : $stmt->fetchAll(PDO::FETCH_ASSOC)) ?: [] as $row) {
+                $out[(string) $row['slug']] = [
+                    'intro' => self::nullableText($row['intro'] ?? null, 4000),
+                    'faq' => PairList::decode($row['faq'] ?? null, 'q', 'a'),
+                ];
+            }
+            return $out;
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /** One offer with its product, for the click redirect. Null when unknown. */
@@ -241,7 +275,8 @@ final class ProductRepository
     {
         $limit = max(1, min(500, $limit));
         $stmt = $this->pdo->query(
-            'SELECT p.*, t.lang, t.slug, t.title, t.teaser, t.meta_description'
+            'SELECT p.*, t.lang, t.slug, t.title, t.teaser, t.meta_description, t.meta_title, t.summary,'
+            . " t.body_format, CHAR_LENGTH(COALESCE(t.body, '')) AS body_length"
             . ' FROM shop_product p'
             . ' LEFT JOIN shop_product_translation t ON t.product_id = p.id'
             . ' ORDER BY p.updated_at DESC, p.id DESC, t.lang ASC'
@@ -251,6 +286,7 @@ final class ProductRepository
 
         // Collapse the join: one entry per product, its languages nested.
         $byId = [];
+        $readinessInput = [];
         foreach ($rows as $row) {
             $id = (int) $row['id'];
             if (!isset($byId[$id])) {
@@ -265,18 +301,151 @@ final class ProductRepository
                     'publishedAt' => self::isoUtc($row['published_at'] ?? null),
                     'translations' => [],
                 ];
+                $readinessInput[$id] = [
+                    'kind' => (string) $row['kind'],
+                    'category' => (string) $row['category'],
+                    'translations' => [],
+                ];
             }
             if ($row['lang'] !== null) {
-                $byId[$id]['translations'][(string) $row['lang']] = [
+                $lang = (string) $row['lang'];
+                $byId[$id]['translations'][$lang] = [
                     'slug' => (string) $row['slug'],
                     'title' => (string) $row['title'],
                     'teaser' => (string) ($row['teaser'] ?? ''),
                     'metaDescription' => $row['meta_description'] !== null
                         ? (string) $row['meta_description'] : null,
+                    'metaTitle' => self::nullableText($row['meta_title'] ?? null, 70),
+                    'summary' => self::nullableText($row['summary'] ?? null, 400),
+                    'hasBody' => (int) $row['body_length'] > 0,
                 ];
+                $readinessInput[$id]['translations'][$lang] = self::readinessTranslation($row);
             }
         }
+
+        foreach ($this->readinessFacts(array_keys($byId), $readinessInput) as $id => $facts) {
+            $byId[$id]['problems'] = ProductReadiness::problems($facts);
+            $byId[$id]['ready'] = $byId[$id]['problems'] === [];
+        }
         return array_values($byId);
+    }
+
+    /**
+     * What a product still lacks before it may go live, or null when it does
+     * not exist. The same rule the panel list shows, read for one product.
+     *
+     * @return list<array{code: string, message: string}>|null
+     */
+    public function problems(int $id): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT p.kind, p.category, t.lang, t.title, t.meta_description, t.meta_title, t.body_format,'
+            . " CHAR_LENGTH(COALESCE(t.body, '')) AS body_length"
+            . ' FROM shop_product p LEFT JOIN shop_product_translation t ON t.product_id = p.id'
+            . ' WHERE p.id = :id',
+        );
+        $stmt->execute(['id' => $id]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        if ($rows === []) {
+            return null;
+        }
+        $input = [$id => [
+            'kind' => (string) $rows[0]['kind'],
+            'category' => (string) $rows[0]['category'],
+            'translations' => [],
+        ]];
+        foreach ($rows as $row) {
+            if ($row['lang'] !== null) {
+                $input[$id]['translations'][(string) $row['lang']] = self::readinessTranslation($row);
+            }
+        }
+        return ProductReadiness::problems($this->readinessFacts([$id], $input)[$id]);
+    }
+
+    /**
+     * Publish or withdraw one product. `published_at` is stamped on the first
+     * publish only, exactly as {@see upsert()} does.
+     */
+    public function setStatus(int $id, string $status): void
+    {
+        $status = self::oneOf($status, ['draft', 'published', 'archived'], 'draft');
+        $this->pdo->prepare(
+            'UPDATE shop_product SET status = :status,'
+            . " published_at = CASE WHEN :status2 = 'published' AND published_at IS NULL"
+            . ' THEN UTC_TIMESTAMP() ELSE published_at END'
+            . ' WHERE id = :id',
+        )->execute(['status' => $status, 'status2' => $status, 'id' => $id]);
+    }
+
+    /** @param array<string,mixed> $row a translation row with `body_length` */
+    private static function readinessTranslation(array $row): array
+    {
+        return [
+            'title' => (string) $row['title'],
+            'bodyLength' => (int) $row['body_length'],
+            'bodyFormat' => (string) ($row['body_format'] ?? 'blocks'),
+            'metaDescription' => $row['meta_description'] !== null ? (string) $row['meta_description'] : null,
+            'metaTitle' => $row['meta_title'] !== null ? (string) $row['meta_title'] : null,
+        ];
+    }
+
+    /**
+     * Fill in the facts the readiness rule needs beyond the translation rows —
+     * cover, category name, price — with one query each for the whole list.
+     *
+     * @param  list<int> $ids
+     * @param  array<int, array<string,mixed>> $input
+     * @return array<int, array<string,mixed>>
+     */
+    private function readinessFacts(array $ids, array $input): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $in = implode(',', array_fill(0, count($ids), '?'));
+
+        $covers = $this->pdo->prepare("SELECT DISTINCT product_id FROM shop_media WHERE role = 'cover' AND product_id IN ($in)");
+        $covers->execute($ids);
+        $withCover = array_flip(array_map('intval', $covers->fetchAll(PDO::FETCH_COLUMN) ?: []));
+
+        $own = $this->pdo->prepare(
+            'SELECT DISTINCT o.product_id FROM shop_offer o JOIN shop_own_product s ON s.offer_id = o.id'
+            . " WHERE o.disabled_at IS NULL AND o.product_id IN ($in)",
+        );
+        $own->execute($ids);
+        $withOwn = array_flip(array_map('intval', $own->fetchAll(PDO::FETCH_COLUMN) ?: []));
+
+        // Fresh by the same 24-hour rule the public read applies.
+        $aff = $this->pdo->prepare(
+            "SELECT product_id, price_cents, price_checked_at FROM shop_offer WHERE kind = 'affiliate'"
+            . " AND disabled_at IS NULL AND product_id IN ($in)",
+        );
+        $aff->execute($ids);
+        $now = time();
+        $withFresh = [];
+        foreach ($aff->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $price = PriceFreshness::publishablePrice(
+                $row['price_cents'] === null ? null : (int) $row['price_cents'],
+                $row['price_checked_at'] !== null ? (string) $row['price_checked_at'] : null,
+                $now,
+            );
+            if ($price !== null) {
+                $withFresh[(int) $row['product_id']] = true;
+            }
+        }
+
+        $names = $this->categoryNames();
+        $out = [];
+        foreach ($ids as $id) {
+            $base = $input[$id];
+            $out[$id] = $base + [
+                'categoryNamed' => ($names[$base['category']][0] ?? null) !== null,
+                'hasCover' => isset($withCover[$id]),
+                'ownPrice' => isset($withOwn[$id]),
+                'freshAffiliatePrice' => isset($withFresh[$id]),
+            ];
+        }
+        return $out;
     }
 
     /** One product for the editor, with translations and offers. */
@@ -325,8 +494,11 @@ final class ProductRepository
     {
         $this->pdo->beginTransaction();
         try {
+            // Null = "not sent": an update then keeps the current status. The
+            // panel form no longer carries one — going live is the publish
+            // action, which checks the product is complete first.
             $status = in_array($data['status'] ?? '', ['draft', 'published', 'archived'], true)
-                ? (string) $data['status'] : 'draft';
+                ? (string) $data['status'] : null;
 
             if ($id === null) {
                 $stmt = $this->pdo->prepare(
@@ -335,7 +507,7 @@ final class ProductRepository
                 );
                 $stmt->execute([
                     'kind' => self::oneOf($data['kind'] ?? null, ['affiliate', 'digital'], 'affiliate'),
-                    'status' => $status,
+                    'status' => $status ?? 'draft',
                     'editorial' => self::oneOf($data['editorialStatus'] ?? null, ['none', 'stub', 'published'], 'none'),
                     'category' => (string) ($data['category'] ?? 'allgemein'),
                     'tags' => isset($data['tags']) ? (string) $data['tags'] : null,
@@ -345,7 +517,7 @@ final class ProductRepository
                 $id = (int) $this->pdo->lastInsertId();
             } else {
                 $stmt = $this->pdo->prepare(
-                    'UPDATE shop_product SET kind = :kind, status = :status, editorial_status = :editorial,'
+                    'UPDATE shop_product SET kind = :kind, status = COALESCE(:status, status), editorial_status = :editorial,'
                     . ' category = :category, tags = :tags, brand = :brand,'
                     // Stamp only on the first publish; never move it afterwards.
                     . " published_at = CASE WHEN :status2 = 'published' AND published_at IS NULL"
@@ -367,15 +539,25 @@ final class ProductRepository
             // The body is only rewritten when the request carries one. The panel's
             // product form edits the metadata alone; overwriting with NULL and the
             // `blocks` default wiped every seeded markdown text on its first save.
-            $bodyUpdate = array_key_exists('body', $data)
-                ? ' body = VALUES(body), body_format = VALUES(body_format),'
-                : '';
+            // The same holds for the SEO fields an older panel build does not
+            // know: absent means "leave alone", not "clear".
+            $optional = '';
+            if (array_key_exists('body', $data)) {
+                $optional .= ' body = VALUES(body), body_format = VALUES(body_format),';
+            }
+            foreach (['metaTitle' => 'meta_title', 'summary' => 'summary', 'facts' => 'facts', 'faq' => 'faq'] as $key => $col) {
+                if (array_key_exists($key, $data)) {
+                    $optional .= " {$col} = VALUES({$col}),";
+                }
+            }
             $tr = $this->pdo->prepare(
                 'INSERT INTO shop_product_translation'
-                . ' (product_id, lang, slug, title, teaser, body, body_format, meta_description, machine_translated)'
-                . ' VALUES (:pid, :lang, :slug, :title, :teaser, :body, :format, :meta, 0)'
+                . ' (product_id, lang, slug, title, teaser, body, body_format, meta_description,'
+                . ' meta_title, summary, facts, faq, machine_translated)'
+                . ' VALUES (:pid, :lang, :slug, :title, :teaser, :body, :format, :meta,'
+                . ' :meta_title, :summary, :facts, :faq, 0)'
                 . ' ON DUPLICATE KEY UPDATE slug = VALUES(slug), title = VALUES(title),'
-                . ' teaser = VALUES(teaser),' . $bodyUpdate
+                . ' teaser = VALUES(teaser),' . $optional
                 // A hand-edited translation stops being a machine translation.
                 . ' meta_description = VALUES(meta_description), machine_translated = 0',
             );
@@ -386,8 +568,14 @@ final class ProductRepository
                 'title' => (string) ($data['title'] ?? ''),
                 'teaser' => (string) ($data['teaser'] ?? ''),
                 'body' => isset($data['body']) ? (string) $data['body'] : null,
-                'format' => self::oneOf($data['bodyFormat'] ?? null, ['markdown', 'blocks'], 'blocks'),
+                // Markdown is the only format the shop site renders; `blocks`
+                // stays accepted for old clients but is no longer the default.
+                'format' => self::oneOf($data['bodyFormat'] ?? null, ['markdown', 'blocks'], 'markdown'),
                 'meta' => isset($data['metaDescription']) ? (string) $data['metaDescription'] : null,
+                'meta_title' => self::nullableText($data['metaTitle'] ?? null, 70),
+                'summary' => self::nullableText($data['summary'] ?? null, 400),
+                'facts' => PairList::encode(PairList::clean($data['facts'] ?? null, 'label', 'value')),
+                'faq' => PairList::encode(PairList::clean($data['faq'] ?? null, 'q', 'a')),
             ]);
 
             $this->pdo->commit();
@@ -585,6 +773,8 @@ final class ProductRepository
                 'editorialStatus' => (string) ($row['editorial_status'] ?? 'none'),
                 'metaDescription' => isset($row['meta_description'])
                     ? (string) $row['meta_description'] : null,
+                'metaTitle' => self::nullableText($row['meta_title'] ?? null, 70),
+                'summary' => self::nullableText($row['summary'] ?? null, 400),
                 'machineTranslated' => (bool) ($row['machine_translated'] ?? false),
                 'publishedAt' => self::isoUtc($row['published_at'] ?? null),
                 'offers' => $offersForProduct,
@@ -775,6 +965,16 @@ final class ProductRepository
     {
         $v = is_string($value) ? strtolower(trim($value)) : '';
         return in_array($v, $allowed, true) ? $v : $fallback;
+    }
+
+    /** Trimmed text capped at `$max`, or null when empty. */
+    private static function nullableText(mixed $value, int $max): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $s = trim($value);
+        return $s === '' ? null : mb_substr($s, 0, $max);
     }
 
     /** @return list<string> */

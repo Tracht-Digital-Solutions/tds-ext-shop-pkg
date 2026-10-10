@@ -1,20 +1,42 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "@tracht-digital-solutions/tds-shared/api";
 import { Spinner } from "@tracht-digital-solutions/tds-shared/components";
 import { toast } from "@tracht-digital-solutions/tds-shared/toast";
 
+import PairEditor, { parsePairs, type Pair } from "./PairEditor.tsx";
+
 interface Category {
   slug: string;
   nameDe: string | null;
   nameEn: string | null;
+  /** Absent on an API older than category copy. */
+  introDe?: string | null;
+  introEn?: string | null;
+  faqDe?: Pair[];
+  faqEn?: Pair[];
   products: number;
 }
 
 interface Draft {
   nameDe: string;
   nameEn: string;
+  introDe: string;
+  introEn: string;
+  faqDe: Pair[];
+  faqEn: Pair[];
 }
+
+const EMPTY_DRAFT: Draft = { nameDe: "", nameEn: "", introDe: "", introEn: "", faqDe: [], faqEn: [] };
+
+const toDraft = (c: Category): Draft => ({
+  nameDe: c.nameDe ?? "",
+  nameEn: c.nameEn ?? "",
+  introDe: c.introDe ?? "",
+  introEn: c.introEn ?? "",
+  faqDe: parsePairs(c.faqDe ?? [], ["q", "a"]),
+  faqEn: parsePairs(c.faqEn ?? [], ["q", "a"]),
+});
 
 /** Mirrors `CategoryName::fromSlug()` — what the shop shows when no name is set. */
 const fromSlug = (slug: string): string => {
@@ -47,9 +69,7 @@ export default function CategoryManager() {
       const json = (await res.json()) as { categories: Category[] };
       setCategories(json.categories);
       setDrafts(
-        Object.fromEntries(
-          json.categories.map((c) => [c.slug, { nameDe: c.nameDe ?? "", nameEn: c.nameEn ?? "" }]),
-        ),
+        Object.fromEntries(json.categories.map((c) => [c.slug, toDraft(c)])),
       );
       setError(null);
     } catch (err) {
@@ -65,7 +85,7 @@ export default function CategoryManager() {
   }, [load]);
 
   const setDraft = (slug: string, patch: Partial<Draft>) =>
-    setDrafts((all) => ({ ...all, [slug]: { ...(all[slug] ?? { nameDe: "", nameEn: "" }), ...patch } }));
+    setDrafts((all) => ({ ...all, [slug]: { ...(all[slug] ?? EMPTY_DRAFT), ...patch } }));
 
   const save = async (slug: string) => {
     const draft = drafts[slug];
@@ -82,7 +102,7 @@ export default function CategoryManager() {
         toast.danger(json.error ?? `Speichern fehlgeschlagen (HTTP ${res.status})`);
         return;
       }
-      toast.success(`Namen für „${slug}“ gespeichert.`);
+      toast.success(`Kategorie „${slug}“ gespeichert.`);
       await load();
     } catch {
       toast.danger("Speichern fehlgeschlagen — keine Verbindung zur API.");
@@ -101,6 +121,8 @@ export default function CategoryManager() {
       <p>
         Der Slug steht in der Adresse des Shops. Die Namen sind, was Besucher lesen. Ohne englischen
         Namen zeigt die englische Seite den deutschen, ohne beide den Slug mit großem Anfangsbuchstaben.
+        Einleitung und häufige Fragen erscheinen oben auf der Kategorieseite — sichtbar und als
+        strukturierte Daten für Suchmaschinen.
       </p>
 
       {error ? (
@@ -122,10 +144,11 @@ export default function CategoryManager() {
           </thead>
           <tbody>
             {categories.map((category) => {
-              const draft = drafts[category.slug] ?? { nameDe: "", nameEn: "" };
+              const draft = drafts[category.slug] ?? EMPTY_DRAFT;
               const busy = saving === category.slug;
               return (
-                <tr key={category.slug}>
+                <Fragment key={category.slug}>
+                <tr>
                   <th scope="row">{category.slug}</th>
                   <td>
                     <input
@@ -160,6 +183,66 @@ export default function CategoryManager() {
                     </button>
                   </td>
                 </tr>
+                <tr>
+                  <td colSpan={5}>
+                    <details>
+                      <summary>
+                        Seitentext und häufige Fragen
+                        {draft.introDe.trim() === "" ? " — noch leer" : ""}
+                      </summary>
+                      <div className="tds-stack">
+                        <label>
+                          Einleitung Deutsch
+                          <textarea
+                            className="field-boxed"
+                            rows={3}
+                            maxLength={4000}
+                            value={draft.introDe}
+                            onChange={(e) => setDraft(category.slug, { introDe: e.target.value })}
+                          />
+                        </label>
+                        <label>
+                          Einleitung Englisch
+                          <textarea
+                            className="field-boxed"
+                            rows={3}
+                            maxLength={4000}
+                            value={draft.introEn}
+                            onChange={(e) => setDraft(category.slug, { introEn: e.target.value })}
+                          />
+                        </label>
+                        <PairEditor
+                          legend="Häufige Fragen Deutsch"
+                          rows={draft.faqDe}
+                          onChange={(faqDe) => setDraft(category.slug, { faqDe })}
+                          keys={["q", "a"]}
+                          labels={["Frage", "Antwort"]}
+                          long
+                        />
+                        <PairEditor
+                          legend="Häufige Fragen Englisch"
+                          rows={draft.faqEn}
+                          onChange={(faqEn) => setDraft(category.slug, { faqEn })}
+                          keys={["q", "a"]}
+                          labels={["Frage", "Antwort"]}
+                          long
+                        />
+                        <div className="tds-toolbar">
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={busy}
+                            aria-busy={busy}
+                            onClick={() => void save(category.slug)}
+                          >
+                            Speichern
+                          </button>
+                        </div>
+                      </div>
+                    </details>
+                  </td>
+                </tr>
+                </Fragment>
               );
             })}
           </tbody>
