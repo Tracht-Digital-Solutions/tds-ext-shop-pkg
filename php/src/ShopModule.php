@@ -37,6 +37,7 @@ use Tds\Frontend\Contract\AbstractModule;
 use Tds\Frontend\Contract\ApiDocSource;
 use Tds\Frontend\Contract\PermissionDef;
 use Tds\Frontend\Contract\SettingsStore;
+use Tds\Frontend\Contract\SetupStatusSource;
 use Tds\Frontend\Contract\SiteKeyProtected;
 use Tds\Frontend\Contract\UserContext;
 use Tds\Frontend\Contract\ModuleHttp;
@@ -58,9 +59,12 @@ use Tds\Frontend\Contract\Stripe\CurlStripeApi;
  * sales stop, so "no sync" is a state this shop has to survive, not an
  * installation step it is waiting on.
  */
-final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyProtected, StripeWebhookSource
+final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyProtected, StripeWebhookSource, SetupStatusSource
 {
     use ModuleHttp;
+
+    /** Kept from register() for setupItems(), which the base calls without one. */
+    private ?ContainerInterface $container = null;
 
     private const LANGS = ['de', 'en'];
 
@@ -89,6 +93,64 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
         return [__DIR__ . '/../db/migrations'];
     }
 
+    /**
+     * What the setup wizard should say about the shop.
+     *
+     * Each check is the one the feature itself runs: the checkout offers only
+     * `PaymentRegistry::configured()`, the sync starts only with
+     * `amazonCredentials()`, and the site lists only published products. So
+     * "eingerichtet" here cannot disagree with what the shop actually does.
+     *
+     * @return list<array<string,string>>
+     */
+    public function setupItems(UserContext $user): array
+    {
+        $c = $this->container;
+        if ($c === null) {
+            return [];
+        }
+        $items = [];
+        try {
+            $paid = $c->get(PaymentRegistry::class)->configured() !== [];
+            $items[] = [
+                'id' => 'shop:payment',
+                'module' => 'shop',
+                'title' => 'Shop: Zahlungsart',
+                'description' => 'Ohne eingerichtete Zahlungsart (Stripe oder PayPal) kann niemand eigene Leistungen im Shop kaufen.',
+                'state' => $paid ? 'ok' : 'missing',
+                'level' => 'required',
+                'href' => '/einstellungen#settings-shop',
+            ];
+        } catch (\Throwable) {
+        }
+        try {
+            $items[] = [
+                'id' => 'shop:amazon',
+                'module' => 'shop',
+                'title' => 'Shop: Amazon-Partnerprogramm',
+                'description' => 'Ohne Zugang zur Product Advertising API bekommen Partnerprodukte weder Preis noch Bild und lassen sich nicht freigeben.',
+                'state' => self::amazonCredentials($c) !== null ? 'ok' : 'missing',
+                'level' => 'optional',
+                'href' => '/einstellungen#settings-shop',
+            ];
+        } catch (\Throwable) {
+        }
+        try {
+            $published = (int) ($c->get(ProductRepository::class)->summary()['published'] ?? 0);
+            $items[] = [
+                'id' => 'shop:catalogue',
+                'module' => 'shop',
+                'title' => 'Shop: Produkte freigeben',
+                'description' => 'Die vorbereiteten Produkte liegen als Entwurf bereit. Erst freigegebene Produkte erscheinen im Shop.',
+                'state' => $published > 0 ? 'ok' : 'missing',
+                'level' => 'recommended',
+                'href' => '/shop',
+            ];
+        } catch (\Throwable) {
+        }
+        return $items;
+    }
+
     /** Listed in the admin panel under Einstellungen → Zahlungen (Stripe). */
     public function stripeWebhooks(): array
     {
@@ -104,6 +166,7 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
     public function register(App $app): void
     {
         $c = $app->getContainer();
+        $this->container = $c;
 
         // NEVER guard these with `!$c->has(X)`.
         //
