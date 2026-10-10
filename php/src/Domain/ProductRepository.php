@@ -1025,9 +1025,13 @@ final class ProductRepository
             return [null, []];
         }
         [$date, $id] = explode('|', $raw, 2);
+        // Two names for the same date: with native prepares (the host's PDO
+        // setting) a named parameter may appear only once, and a reused one
+        // threw — which the fail-soft route turned into an empty page 2 for
+        // every catalogue longer than one page.
         return [
-            '(p.published_at < :cur_date OR (p.published_at = :cur_date AND p.id < :cur_id))',
-            ['cur_date' => $date, 'cur_id' => (int) $id],
+            '(p.published_at < :cur_date OR (p.published_at = :cur_date2 AND p.id < :cur_id))',
+            ['cur_date' => $date, 'cur_date2' => $date, 'cur_id' => (int) $id],
         ];
     }
 
