@@ -13,6 +13,16 @@
 declare(strict_types=1);
 
 return [
+    [
+        'method' => 'POST',
+        'pattern' => '/shop/cache/rebuild',
+        'summary' => 'Öffentlichen Shop nach Katalogänderungen aktualisieren',
+        'auth' => 'permission',
+        'permission' => 'shop:write',
+        'tag' => 'Verwaltung',
+        'params' => [],
+        'responses' => [['status' => 200, 'description' => 'Cache-Ergebnis mit cache_status, cached, rebuilt und failed.']],
+    ],
     /* --- public catalogue ------------------------------------------------ */
     [
         'method' => 'GET',

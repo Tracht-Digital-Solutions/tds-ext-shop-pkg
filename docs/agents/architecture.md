@@ -88,6 +88,13 @@ URLs. It has a coded default, so the catalogue answers on an unconfigured host.
 
 ## Prepared catalogue
 
+Publication and withdrawal notify `SiteCache` after persistence; bulk publication sends one
+batch for successful ids only. `ProductRepository::cacheEvents()` supplies the translated
+slugs and categories. `product` updates entry points/product pages; `category` updates both
+category pages. The public frontend owns their paths. Settings `shop/cache_url` and the
+secret `shop/cache_token` configure the destination; failures are returned beside the saved
+result. `POST /shop/cache/rebuild` repairs an already published catalogue.
+
 `php/db/seed/*.php` holds the prepared products and categories as plain arrays;
 `Support\CatalogueSeed` writes them from migrations (`20261010000002`). Everything lands as a
 draft that already passes `Support\ProductReadiness`, so the operator only presses „Freigeben“.

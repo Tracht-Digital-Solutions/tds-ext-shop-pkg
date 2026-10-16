@@ -31,6 +31,10 @@ export default function ShopSettings() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [cacheUrl, setCacheUrl] = useState("https://shop.tracht-digital.de");
+  const [cacheToken, setCacheToken] = useState("");
+  const [cacheState, setCacheState] = useState<Masked | null>(null);
 
   const [accessState, setAccessState] = useState<Masked | null>(null);
   const [secretState, setSecretState] = useState<Masked | null>(null);
@@ -73,6 +77,8 @@ export default function ShopSettings() {
       }
       const data = (await res.json()) as { settings?: Masked[] };
       const map = new Map((data.settings ?? []).map((s) => [s.key, s]));
+      setCacheUrl(map.get("cache_url")?.value ?? "https://shop.tracht-digital.de");
+      setCacheState(map.get("cache_token") ?? null);
       setAccessState(map.get("amazon_access_key") ?? null);
       setSecretState(map.get("amazon_secret_key") ?? null);
       setPartnerTag(map.get("amazon_partner_tag")?.value ?? "");
@@ -104,6 +110,8 @@ export default function ShopSettings() {
     setBusy(true);
     try {
       const settings: Masked[] = [
+        { key: "cache_url", secret: false, value: cacheUrl.trim() },
+        { key: "cache_token", secret: true, value: cacheToken.trim() },
         // A blank secret is NOT an instruction to clear it — the core keeps the
         // stored value. That is what lets this form be saved without ever
         // holding the real key.
@@ -140,6 +148,7 @@ export default function ShopSettings() {
         return;
       }
       setAccessInput("");
+      setCacheToken("");
       setSecretInput("");
       setStripeKeyInput("");
       setStripeHookInput("");
@@ -163,6 +172,30 @@ export default function ShopSettings() {
   return (
     <>
       {error ? <div className="tds-alert tds-alert--danger">{error}</div> : null}
+
+      <h3>Öffentlichen Shop aktualisieren</h3>
+      <p>Freigaben aktualisieren den Seiten-Cache automatisch. Das Token muss mit TDS_CACHE_TOKEN auf dem Shop-Host übereinstimmen. Angaben zuerst speichern.</p>
+      <div className="tds-field-row">
+        <label>Shop-Adresse
+          <input className="field-boxed" type="url" value={cacheUrl} onChange={(e) => setCacheUrl(e.target.value)} />
+        </label>
+        <label>Cache-Token <em>({hint(cacheState)})</em>
+          <input className="field-boxed" type="password" autoComplete="off" value={cacheToken} onChange={(e) => setCacheToken(e.target.value)} placeholder="leer lassen = unverändert" />
+        </label>
+      </div>
+      <button className="btn btn-ghost" type="button" disabled={busy || rebuilding} aria-busy={rebuilding} onClick={async () => {
+        setRebuilding(true);
+        try {
+          const res = await apiFetch("/shop/cache/rebuild", { method: "POST" });
+          const report = await res.json() as { cached?: boolean; cache_status?: string };
+          if (res.ok && report.cached) toast.success("Öffentlicher Shop aktualisiert.");
+          else toast.warning(report.cache_status === "not_configured" ? "Bitte Shop-Adresse und Cache-Token konfigurieren und speichern." : "Seiten-Cache konnte nicht vollständig aktualisiert werden. Bitte Verbindung und Token prüfen.");
+        } catch {
+          toast.danger("Keine Verbindung zur API.");
+        } finally {
+          setRebuilding(false);
+        }
+      }}>Seiten-Cache neu aufbauen</button>
 
       <div className="tds-alert tds-alert--info">
         Ohne diese drei Angaben ist der Angebotsabgleich aus. Der Katalog

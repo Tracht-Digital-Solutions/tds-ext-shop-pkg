@@ -9,6 +9,7 @@ use Tds\Ext\Shop\Support\PairList;
 use Tds\Ext\Shop\Support\ProductReadiness;
 use Tds\Ext\Shop\Support\PriceFreshness;
 use Tds\Ext\Shop\Support\UtcDateTime;
+use Tds\Frontend\Contract\CacheEvent;
 
 /**
  * Catalogue data access — plain PDO, no ORM, matching the other extensions.
@@ -375,6 +376,36 @@ final class ProductRepository
             . ' THEN UTC_TIMESTAMP() ELSE published_at END'
             . ' WHERE id = :id',
         )->execute(['status' => $status, 'status2' => $status, 'id' => $id]);
+    }
+
+    /**
+     * Cache identities include withdrawn products and each language's own slug.
+     * @param list<int>|null $ids null selects published products for a manual rebuild.
+     * @return list<CacheEvent>
+     */
+    public function cacheEvents(?array $ids = null): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $sql = 'SELECT p.category, t.slug, t.lang FROM shop_product p'
+            . ' JOIN shop_product_translation t ON t.product_id = p.id';
+        if ($ids !== null) {
+            $sql .= ' WHERE p.id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')';
+        } else {
+            $sql .= ' WHERE ' . self::PUBLISHED;
+        }
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($ids ?? []);
+        $events = ['product' => new CacheEvent('product')];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $key = $row['lang'] . ':' . $row['slug'];
+            $events[$key] = new CacheEvent('product', $row['slug'], $row['lang']);
+            if ($row['category'] !== '') {
+                $events['category:' . $row['category']] = new CacheEvent('category', $row['category']);
+            }
+        }
+        return array_values($events);
     }
 
     /** @param array<string,mixed> $row a translation row with `body_length` */

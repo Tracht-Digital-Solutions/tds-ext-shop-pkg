@@ -98,6 +98,27 @@ it, because two of the three consuming surfaces render on a different origin.
 
 ## Scope of this version
 
+### Public shop cache
+
+Publishing one product or a selection requests a page-cache rebuild after persistence.
+The response reports `cache_status` / `cached` separately from the publication result;
+an unavailable shop must not undo a saved publication.
+
+Configure **Einstellungen → TDShop → Öffentlichen Shop aktualisieren**:
+
+- Shop-Adresse: the public origin, normally `https://shop.tracht-digital.de`.
+- Cache-Token: the same secret as `TDS_CACHE_TOKEN` on the shop's Node host.
+  It is stored encrypted as `shop/cache_token`. A blank input keeps the secret.
+
+Save first, then use **Seiten-Cache neu aufbauen** to refresh products already released
+before cache notifications were configured. This calls `POST /shop/cache/rebuild`
+with `shop:write`. Server-only fallbacks are `SHOP_PUBLIC_URL` and `SHOP_CACHE_TOKEN`.
+
+Deploy the shop frontend's `category` cache-event support before this API extension,
+then update the composed API and panel consumers to the released extension version.
+No database migration is needed. Product events carry the real slug for each language;
+category events carry the category identity. The frontend resolves the public paths.
+
 Checkpoint 1: catalogue, placements, click counting. The Amazon offer sync
 (`shop:sync`) and the Stripe checkout (`shop:orders`) are later checkpoints —
 their permissions are declared because the backend declares them, but neither

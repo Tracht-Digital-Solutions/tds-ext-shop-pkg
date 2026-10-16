@@ -80,6 +80,12 @@ final class ShopModuleTest extends TestCase
         self::assertSame(401, $res->getStatusCode());
     }
 
+    public function testCacheRebuildRequiresShopWrite(): void
+    {
+        self::assertSame(401, self::call(self::app(), 'POST', '/shop/cache/rebuild')->getStatusCode());
+        self::assertSame(403, self::call(self::app(new FakeUser(['shop:read'])), 'POST', '/shop/cache/rebuild')->getStatusCode());
+    }
+
     public function testAdminRouteRejectsAuthenticatedUserWithoutThePermission(): void
     {
         // The distinction that matters: 403 says "you are known and may not",

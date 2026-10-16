@@ -38,6 +38,10 @@ use Tds\Frontend\Contract\AbstractModule;
 use Tds\Frontend\Contract\Commerce\SaleEvents;
 use Tds\Frontend\Contract\ApiDocSource;
 use Tds\Frontend\Contract\PermissionDef;
+use Tds\Frontend\Contract\CacheResult;
+use Tds\Frontend\Contract\SiteCache;
+use Tds\Frontend\Contract\ReportingSiteCache;
+use Tds\Frontend\Contract\SettingDef;
 use Tds\Frontend\Contract\SettingsStore;
 use Tds\Frontend\Contract\SetupStatusSource;
 use Tds\Frontend\Contract\SiteKeyProtected;
@@ -175,6 +179,14 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
             self::SETTINGS_NS,
             'stripe_webhook_secret',
         )];
+    }
+
+    public function settings(): array
+    {
+        return [
+            new SettingDef('cache_url', 'Seiten-Cache: Shop-Adresse', false, 'shop', 'https://shop.tracht-digital.de'),
+            new SettingDef('cache_token', 'Seiten-Cache: Token', true, 'shop'),
+        ];
     }
 
     public function register(App $app): void
@@ -574,7 +586,7 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
                 return self::json($res, ['error' => 'Produkt ist noch nicht vollständig.', 'problems' => $problems], 422);
             }
             $repo->setStatus((int) $args['id'], 'published');
-            return self::json($res, ['ok' => true]);
+            return self::json($res, ['ok' => true] + self::refreshCache($c, [(int) $args['id']]));
         });
 
         $app->post('/shop/products/{id:[0-9]+}/unpublish', function (Request $req, Response $res, array $args) use ($c): Response {
@@ -586,7 +598,7 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
                 return self::json($res, ['error' => 'Not found'], 404);
             }
             $repo->setStatus((int) $args['id'], 'draft');
-            return self::json($res, ['ok' => true]);
+            return self::json($res, ['ok' => true] + self::refreshCache($c, [(int) $args['id']]));
         });
 
         // Several at once. Not all-or-nothing: the complete ones go live and
@@ -618,7 +630,13 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
                     $published[] = $id;
                 }
             }
-            return self::json($res, ['published' => $published, 'refused' => (object) $refused]);
+            return self::json($res, ['published' => $published, 'refused' => (object) $refused]
+                + self::refreshCache($c, $published));
+        });
+
+        $app->post('/shop/cache/rebuild', function (Request $req, Response $res) use ($c): Response {
+            if (($deny = self::require($c->get(UserContext::class), 'shop:write', $res)) !== null) return $deny;
+            return self::json($res, self::refreshCache($c));
         });
 
         $app->put('/shop/products/{id:[0-9]+}/offers', function (Request $req, Response $res, array $args) use ($c): Response {
@@ -1438,6 +1456,25 @@ final class ShopModule extends AbstractModule implements ApiDocSource, SiteKeyPr
             // No store bound — env only, the pre-settings behaviour.
         }
         return trim((string) (getenv($env) ?: ''));
+    }
+
+    /** Cache failure is a separate outcome: a persisted publication stays successful. */
+    private static function refreshCache(ContainerInterface $c, ?array $ids = null): array
+    {
+        try {
+            if ($ids === []) return (new CacheResult(CacheResult::SKIPPED))->toArray();
+            if (!$c->has(SiteCache::class)) return (new CacheResult(CacheResult::NOT_CONFIGURED))->toArray();
+            $cache = $c->get(SiteCache::class);
+            $url = self::setting($c, 'cache_url', 'SHOP_PUBLIC_URL', false) ?: 'https://shop.tracht-digital.de';
+            $token = self::setting($c, 'cache_token', 'SHOP_CACHE_TOKEN', true);
+            if (!$cache->isConfigured($url, $token)) return (new CacheResult(CacheResult::NOT_CONFIGURED))->toArray();
+            $events = $c->get(ProductRepository::class)->cacheEvents($ids);
+            if ($cache instanceof ReportingSiteCache) return $cache->rebuildWithResult($url, $token, $events)->toArray();
+            $cache->rebuild($url, $token, $events);
+            return (new CacheResult(CacheResult::SKIPPED))->toArray();
+        } catch (\Throwable) {
+            return (new CacheResult(CacheResult::FAILED, failed: [['error' => 'cache_refresh_failed']]))->toArray();
+        }
     }
 
     /* --- helpers ---------------------------------------------------------- */

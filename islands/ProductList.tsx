@@ -288,13 +288,14 @@ export default function ProductList() {
     setPublishing(product.id);
     try {
       const res = await apiFetch(`/shop/products/${product.id}/${live ? "publish" : "unpublish"}`, { method: "POST" });
-      const json = (await res.json().catch(() => ({}))) as { error?: string; problems?: Problem[] };
+      const json = (await res.json().catch(() => ({}))) as { error?: string; problems?: Problem[]; cached?: boolean };
       if (!res.ok) {
         const reasons = json.problems?.map((p) => p.message).join(" ") ?? "";
         toast.danger(`${json.error ?? "Freigabe fehlgeschlagen"} (HTTP ${res.status}) ${reasons}`.trim());
         return;
       }
       toast.success(live ? "Produkt freigegeben." : "Produkt zurückgezogen.");
+      if (json.cached === false) toast.warning("Gespeichert, aber der öffentliche Shop wurde noch nicht aktualisiert. Bitte den Seiten-Cache in den TDShop-Einstellungen prüfen und neu aufbauen.");
       await load();
     } catch {
       toast.danger("Keine Verbindung zur API.");
@@ -317,6 +318,7 @@ export default function ProductList() {
         error?: string;
         published?: number[];
         refused?: Record<string, Problem[]>;
+        cached?: boolean;
       };
       if (!res.ok) {
         toast.danger(json.error ?? `Freigabe fehlgeschlagen (HTTP ${res.status})`);
@@ -324,6 +326,7 @@ export default function ProductList() {
       }
       const refused = Object.keys(json.refused ?? {}).length;
       const published = json.published?.length ?? 0;
+      if (published > 0 && json.cached === false) toast.warning("Freigabe gespeichert, aber der öffentliche Shop wurde noch nicht aktualisiert. Bitte den Seiten-Cache in den TDShop-Einstellungen prüfen und neu aufbauen.");
       if (refused > 0) {
         toast.warning(`${published} freigegeben, ${refused} noch unvollständig — Gründe stehen in der Liste.`);
       } else {
