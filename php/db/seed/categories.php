@@ -229,4 +229,38 @@ return [
             ['q' => 'Why is there no price?', 'a' => 'I only show partner prices younger than 24 hours.'],
         ],
     ],
+    [
+        'slug' => 'buero',
+        'name_de' => 'Büro & Telefonie',
+        'name_en' => 'Office & telephony',
+        'intro_de' => 'Drucker, Telefone, Beschriftung und Aktenvernichter: Geräte, die im Büroalltag einfach funktionieren sollen.',
+        'intro_en' => 'Printers, phones, labelling and shredders: devices that should simply work in everyday office life.',
+        'faq_de' => [
+            ['q' => 'Verdienen Sie an den Links?', 'a' => 'Ja, eine kleine Provision. Der Preis für Sie ändert sich dadurch nicht.'],
+            ['q' => 'Laser oder Tinte?', 'a' => 'Laser für viel Text und seltenes Drucken, Tintentank für Farbe zu niedrigen Seitenkosten. Patronen-Tintendrucker lohnen sich im Büro selten.'],
+            ['q' => 'Warum steht kein Preis da?', 'a' => 'Partnerpreise zeige ich nur, wenn sie jünger als 24 Stunden sind.'],
+        ],
+        'faq_en' => [
+            ['q' => 'Do you earn from these links?', 'a' => 'Yes, a small commission. Your price does not change.'],
+            ['q' => 'Laser or ink?', 'a' => 'Laser for lots of text and occasional printing, an ink tank for colour at low cost per page. Cartridge inkjets rarely pay off in an office.'],
+            ['q' => 'Why is there no price?', 'a' => 'I only show partner prices younger than 24 hours.'],
+        ],
+    ],
+    [
+        'slug' => 'content',
+        'name_de' => 'Foto, Video & Social Media',
+        'name_en' => 'Photo, video & social media',
+        'intro_de' => 'Kamera, Mikrofon und Licht für eigene Videos, Reels und Online-Kurse. Kleine Ausstattung, die professionell wirkt.',
+        'intro_en' => 'Camera, microphone and light for your own videos, reels and online courses. Small kit that looks professional.',
+        'faq_de' => [
+            ['q' => 'Verdienen Sie an den Links?', 'a' => 'Ja, eine kleine Provision. Der Preis für Sie ändert sich dadurch nicht.'],
+            ['q' => 'Womit fange ich an?', 'a' => 'Mit gutem Ton. Ein Ansteckmikrofon verbessert ein Handyvideo mehr als jede neue Kamera.'],
+            ['q' => 'Warum steht kein Preis da?', 'a' => 'Partnerpreise zeige ich nur, wenn sie jünger als 24 Stunden sind.'],
+        ],
+        'faq_en' => [
+            ['q' => 'Do you earn from these links?', 'a' => 'Yes, a small commission. Your price does not change.'],
+            ['q' => 'Where do I start?', 'a' => 'With good sound. A clip-on microphone improves a phone video more than any new camera.'],
+            ['q' => 'Why is there no price?', 'a' => 'I only show partner prices younger than 24 hours.'],
+        ],
+    ],
 ];
