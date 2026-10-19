@@ -66,7 +66,8 @@ describe("shop cache settings", () => {
   it("shows a successful rebuild only when the API confirms it", async () => {
     await openSettings();
     expect((screen.getByLabelText(/Cache-Token/) as HTMLInputElement).value).toBe("");
-    expect((screen.getByLabelText("Shop-Adresse") as HTMLInputElement).value).toBe("https://shop.example.test");
+    // The stored values reach the fields in the effect after the load renders.
+    await waitFor(() => expect((screen.getByLabelText("Shop-Adresse") as HTMLInputElement).value).toBe("https://shop.example.test"));
     expect(screen.getByText(/konfiguriert \(…1234\)/)).toBeTruthy();
     replies.push({ path: /\/shop\/cache\/rebuild$/, method: "POST", body: { cached: true, cache_status: "refreshed" } });
     fireEvent.click(screen.getByRole("button", { name: "Seiten-Cache neu aufbauen" }));
