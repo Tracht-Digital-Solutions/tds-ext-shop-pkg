@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { apiFetch } from "@tracht-digital-solutions/tds-shared/api";
-import { Spinner } from "@tracht-digital-solutions/tds-shared/components";
+import { apiFetch, sendJson } from "@tracht-digital-solutions/tds-shared/api";
+import { Alert, Spinner } from "@tracht-digital-solutions/tds-shared/components";
 import { resolveChipVariant } from "@tracht-digital-solutions/tds-shared/design";
 import { toast } from "@tracht-digital-solutions/tds-shared/toast";
 
@@ -67,11 +67,7 @@ export default function PlacementManager() {
   const patch = async (placement: Placement, fields: Partial<Placement>) => {
     setSavingKey(placement.key);
     try {
-      const res = await apiFetch(`/shop/placements/${placement.key}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fields),
-      });
+      const res = await sendJson(`/shop/placements/${placement.key}`, "PUT", fields);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast.success(`„${placement.label}" gespeichert.`);
       await load();
@@ -91,16 +87,16 @@ export default function PlacementManager() {
   return (
     <>
       {error ? (
-        <div className="tds-alert tds-alert--danger">
+        <Alert>
           Platzierungen konnten nicht geladen werden: {error}
-        </div>
+        </Alert>
       ) : null}
 
-      <div className="tds-alert tds-alert--info">
+      <Alert tone="info">
         Jede Platzierung wird als <strong>Anzeige</strong> gekennzeichnet. Die
         Kennzeichnung wird von der API mitgeliefert und lässt sich hier nicht
         abschalten — sie ist eine Rechtspflicht, keine Einstellung.
-      </div>
+      </Alert>
 
       {placements.length === 0 ? (
         <p className="tds-empty">Keine Platzierungen vorhanden.</p>

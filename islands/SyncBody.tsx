@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "@tracht-digital-solutions/tds-shared/api";
-import { Skeleton } from "@tracht-digital-solutions/tds-shared/components";
+import { Alert, Skeleton } from "@tracht-digital-solutions/tds-shared/components";
 import { toast } from "@tracht-digital-solutions/tds-shared/toast";
 
 interface Status {
@@ -80,11 +80,11 @@ export default function SyncBody() {
   return (
     <>
       {status.revoked ? (
-        <div className="tds-alert tds-alert--danger">
+        <Alert>
           Amazon hat den API-Zugang entzogen. Der Katalog läuft weiter, aber
           Preise verschwinden nach 24 Stunden aus der Anzeige. Prüfen, ob das
           Partnerprogramm noch aktiv ist, dann hier erneut anstoßen.
-        </div>
+        </Alert>
       ) : null}
 
       <p className="tds-widget__metric">{pending}</p>

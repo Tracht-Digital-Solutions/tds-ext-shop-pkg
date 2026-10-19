@@ -1,18 +1,9 @@
 import { useEffect, useState } from "react";
 
 import { apiFetch } from "@tracht-digital-solutions/tds-shared/api";
-import { Spinner } from "@tracht-digital-solutions/tds-shared/components";
+import { secretHint, useRuntimeSettings } from "@tracht-digital-solutions/tds-shared/admin";
+import { Alert, Spinner } from "@tracht-digital-solutions/tds-shared/components";
 import { toast } from "@tracht-digital-solutions/tds-shared/toast";
-
-interface Masked {
-  key: string;
-  secret: boolean;
-  configured?: boolean;
-  last4?: string | null;
-  value?: string;
-}
-
-const NS = "/admin/settings/shop";
 
 /**
  * TDShop settings — the Amazon Product Advertising credentials.
@@ -28,34 +19,24 @@ const NS = "/admin/settings/shop";
  * that reads like a code bug.
  */
 export default function ShopSettings() {
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const settings = useRuntimeSettings("shop");
   const [rebuilding, setRebuilding] = useState(false);
   const [cacheUrl, setCacheUrl] = useState("https://shop.tracht-digital.de");
   const [cacheToken, setCacheToken] = useState("");
-  const [cacheState, setCacheState] = useState<Masked | null>(null);
 
-  const [accessState, setAccessState] = useState<Masked | null>(null);
-  const [secretState, setSecretState] = useState<Masked | null>(null);
   const [accessInput, setAccessInput] = useState("");
   const [secretInput, setSecretInput] = useState("");
   const [partnerTag, setPartnerTag] = useState("");
   const [marketplace, setMarketplace] = useState("www.amazon.de");
 
-  const [stripeKeyState, setStripeKeyState] = useState<Masked | null>(null);
-  const [stripeHookState, setStripeHookState] = useState<Masked | null>(null);
   const [stripeKeyInput, setStripeKeyInput] = useState("");
   const [stripeHookInput, setStripeHookInput] = useState("");
 
-  const [ppSecretState, setPpSecretState] = useState<Masked | null>(null);
   const [ppClientId, setPpClientId] = useState("");
   const [ppSecretInput, setPpSecretInput] = useState("");
   const [ppWebhookId, setPpWebhookId] = useState("");
   const [ppSandbox, setPpSandbox] = useState(false);
 
-  const [weroKeyState, setWeroKeyState] = useState<Masked | null>(null);
-  const [weroHookState, setWeroHookState] = useState<Masked | null>(null);
   const [weroPsp, setWeroPsp] = useState("");
   const [weroKeyInput, setWeroKeyInput] = useState("");
   const [weroHookInput, setWeroHookInput] = useState("");
@@ -63,115 +44,65 @@ export default function ShopSettings() {
   const [shipFlat, setShipFlat] = useState("");
   const [shipFreeFrom, setShipFreeFrom] = useState("");
 
-  const load = async () => {
-    try {
-      const res = await apiFetch(NS);
-      if (!res.ok) {
-        setError(
-          res.status === 401 || res.status === 403
-            ? "Nur für Administratoren."
-            : `Einstellungen konnten nicht geladen werden (HTTP ${res.status}).`,
-        );
-        setLoaded(true);
-        return;
-      }
-      const data = (await res.json()) as { settings?: Masked[] };
-      const map = new Map((data.settings ?? []).map((s) => [s.key, s]));
-      setCacheUrl(map.get("cache_url")?.value ?? "https://shop.tracht-digital.de");
-      setCacheState(map.get("cache_token") ?? null);
-      setAccessState(map.get("amazon_access_key") ?? null);
-      setSecretState(map.get("amazon_secret_key") ?? null);
-      setPartnerTag(map.get("amazon_partner_tag")?.value ?? "");
-      setMarketplace(map.get("amazon_marketplace")?.value ?? "www.amazon.de");
-      setStripeKeyState(map.get("stripe_secret_key") ?? null);
-      setStripeHookState(map.get("stripe_webhook_secret") ?? null);
-      setPpSecretState(map.get("paypal_secret") ?? null);
-      setPpClientId(map.get("paypal_client_id")?.value ?? "");
-      setPpWebhookId(map.get("paypal_webhook_id")?.value ?? "");
-      setPpSandbox((map.get("paypal_sandbox")?.value ?? "") !== "");
-      setWeroKeyState(map.get("wero_api_key") ?? null);
-      setWeroHookState(map.get("wero_webhook_secret") ?? null);
-      setWeroPsp(map.get("wero_psp")?.value ?? "");
-      setShipFlat(map.get("shipping_flat_cents")?.value ?? "");
-      setShipFreeFrom(map.get("shipping_free_from_cents")?.value ?? "");
-      setError(null);
-    } catch {
-      setError("Keine Verbindung zur API.");
-    } finally {
-      setLoaded(true);
-    }
-  };
-
   useEffect(() => {
-    void load();
-  }, []);
+    const get = (key: string) => settings.get(key)?.value;
+    setCacheUrl(get("cache_url") ?? "https://shop.tracht-digital.de");
+    setPartnerTag(get("amazon_partner_tag") ?? "");
+    setMarketplace(get("amazon_marketplace") ?? "www.amazon.de");
+    setPpClientId(get("paypal_client_id") ?? "");
+    setPpWebhookId(get("paypal_webhook_id") ?? "");
+    setPpSandbox((get("paypal_sandbox") ?? "") !== "");
+    setWeroPsp(get("wero_psp") ?? "");
+    setShipFlat(get("shipping_flat_cents") ?? "");
+    setShipFreeFrom(get("shipping_free_from_cents") ?? "");
+  }, [settings.settings]);
 
   const save = async () => {
-    setBusy(true);
-    try {
-      const settings: Masked[] = [
-        { key: "cache_url", secret: false, value: cacheUrl.trim() },
-        { key: "cache_token", secret: true, value: cacheToken.trim() },
-        // A blank secret is NOT an instruction to clear it — the core keeps the
-        // stored value. That is what lets this form be saved without ever
-        // holding the real key.
-        { key: "amazon_access_key", secret: true, value: accessInput.trim() },
-        { key: "amazon_secret_key", secret: true, value: secretInput.trim() },
-        { key: "amazon_partner_tag", secret: false, value: partnerTag.trim() },
-        { key: "amazon_marketplace", secret: false, value: marketplace.trim() },
-        { key: "stripe_secret_key", secret: true, value: stripeKeyInput.trim() },
-        { key: "stripe_webhook_secret", secret: true, value: stripeHookInput.trim() },
-        { key: "paypal_client_id", secret: false, value: ppClientId.trim() },
-        { key: "paypal_secret", secret: true, value: ppSecretInput.trim() },
-        { key: "paypal_webhook_id", secret: false, value: ppWebhookId.trim() },
-        // Any non-empty value means sandbox; empty means live. A boolean would
-        // be tidier, but the settings store holds strings and "false" is a
-        // non-empty string — which is how a sandbox flag becomes a live one.
-        { key: "paypal_sandbox", secret: false, value: ppSandbox ? "1" : "" },
-        { key: "wero_psp", secret: false, value: weroPsp.trim() },
-        { key: "wero_api_key", secret: true, value: weroKeyInput.trim() },
-        { key: "wero_webhook_secret", secret: true, value: weroHookInput.trim() },
-        // Cents, as a string, because that is what the settings store holds —
-        // and cents rather than euros because every price in this package is an
-        // integer number of them. A euro field here would be the one place a
-        // float gets into the arithmetic.
-        { key: "shipping_flat_cents", secret: false, value: shipFlat.trim() },
-        { key: "shipping_free_from_cents", secret: false, value: shipFreeFrom.trim() },
-      ];
-      const res = await apiFetch(NS, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings }),
-      });
-      if (!res.ok) {
-        toast.danger(`Speichern fehlgeschlagen (HTTP ${res.status}).`);
-        return;
-      }
-      setAccessInput("");
-      setCacheToken("");
-      setSecretInput("");
-      setStripeKeyInput("");
-      setStripeHookInput("");
-      setPpSecretInput("");
-      setWeroKeyInput("");
-      setWeroHookInput("");
-      toast.success("Gespeichert.");
-      await load();
-    } catch {
-      toast.danger("Speichern fehlgeschlagen — keine Verbindung zur API.");
-    } finally {
-      setBusy(false);
-    }
+    const saved = await settings.save([
+      { key: "cache_url", value: cacheUrl.trim() },
+      { key: "cache_token", secret: true, value: cacheToken.trim() },
+      // A blank secret is NOT an instruction to clear it — the core keeps the
+      // stored value. That is what lets this form be saved without ever
+      // holding the real key.
+      { key: "amazon_access_key", secret: true, value: accessInput.trim() },
+      { key: "amazon_secret_key", secret: true, value: secretInput.trim() },
+      { key: "amazon_partner_tag", value: partnerTag.trim() },
+      { key: "amazon_marketplace", value: marketplace.trim() },
+      { key: "stripe_secret_key", secret: true, value: stripeKeyInput.trim() },
+      { key: "stripe_webhook_secret", secret: true, value: stripeHookInput.trim() },
+      { key: "paypal_client_id", value: ppClientId.trim() },
+      { key: "paypal_secret", secret: true, value: ppSecretInput.trim() },
+      { key: "paypal_webhook_id", value: ppWebhookId.trim() },
+      // Any non-empty value means sandbox; empty means live. A boolean would
+      // be tidier, but the settings store holds strings and "false" is a
+      // non-empty string — which is how a sandbox flag becomes a live one.
+      { key: "paypal_sandbox", value: ppSandbox ? "1" : "" },
+      { key: "wero_psp", value: weroPsp.trim() },
+      { key: "wero_api_key", secret: true, value: weroKeyInput.trim() },
+      { key: "wero_webhook_secret", secret: true, value: weroHookInput.trim() },
+      // Cents, as a string, because that is what the settings store holds —
+      // and cents rather than euros because every price in this package is an
+      // integer number of them. A euro field here would be the one place a
+      // float gets into the arithmetic.
+      { key: "shipping_flat_cents", value: shipFlat.trim() },
+      { key: "shipping_free_from_cents", value: shipFreeFrom.trim() },
+    ]);
+    if (!saved) return;
+    setAccessInput("");
+    setCacheToken("");
+    setSecretInput("");
+    setStripeKeyInput("");
+    setStripeHookInput("");
+    setPpSecretInput("");
+    setWeroKeyInput("");
+    setWeroHookInput("");
   };
 
-  const hint = (s: Masked | null) =>
-    s?.configured ? `konfiguriert (…${s.last4 ?? "????"})` : "nicht konfiguriert";
-
-  if (!loaded) return <Spinner />;
+  if (!settings.loaded) return <Spinner />;
 
   return (
     <>
-      {error ? <div className="tds-alert tds-alert--danger">{error}</div> : null}
+      <Alert>{settings.error}</Alert>
 
       <h3>Öffentlichen Shop aktualisieren</h3>
       <p>Freigaben aktualisieren den Seiten-Cache automatisch. Das Token muss mit TDS_CACHE_TOKEN auf dem Shop-Host übereinstimmen. Angaben zuerst speichern.</p>
@@ -179,11 +110,11 @@ export default function ShopSettings() {
         <label>Shop-Adresse
           <input className="field-boxed" type="url" value={cacheUrl} onChange={(e) => setCacheUrl(e.target.value)} />
         </label>
-        <label>Cache-Token <em>({hint(cacheState)})</em>
+        <label>Cache-Token <em>({secretHint(settings.get("cache_token"))})</em>
           <input className="field-boxed" type="password" autoComplete="off" value={cacheToken} onChange={(e) => setCacheToken(e.target.value)} placeholder="leer lassen = unverändert" />
         </label>
       </div>
-      <button className="btn btn-ghost" type="button" disabled={busy || rebuilding} aria-busy={rebuilding} onClick={async () => {
+      <button className="btn btn-ghost" type="button" disabled={settings.busy || rebuilding} aria-busy={rebuilding} onClick={async () => {
         setRebuilding(true);
         try {
           const res = await apiFetch("/shop/cache/rebuild", { method: "POST" });
@@ -197,16 +128,16 @@ export default function ShopSettings() {
         }
       }}>Seiten-Cache neu aufbauen</button>
 
-      <div className="tds-alert tds-alert--info">
+      <Alert tone="info">
         Ohne diese drei Angaben ist der Angebotsabgleich aus. Der Katalog
         funktioniert trotzdem — Affiliate-Links sind nicht die API. Nur Preise
         verschwinden dann nach 24 Stunden von selbst aus der Anzeige, weil sie
         laut Lizenz nicht länger gezeigt werden dürfen.
-      </div>
+      </Alert>
 
       <div className="tds-field-row">
         <label>
-          Access Key <em>({hint(accessState)})</em>
+          Access Key <em>({secretHint(settings.get("amazon_access_key"))})</em>
           <input
             className="field-boxed"
             type="password"
@@ -217,7 +148,7 @@ export default function ShopSettings() {
           />
         </label>
         <label>
-          Secret Key <em>({hint(secretState)})</em>
+          Secret Key <em>({secretHint(settings.get("amazon_secret_key"))})</em>
           <input
             className="field-boxed"
             type="password"
@@ -250,17 +181,17 @@ export default function ShopSettings() {
       </div>
 
       <h3>Stripe</h3>
-      <div className="tds-alert tds-alert--info">
+      <Alert tone="info">
         Für den Verkauf eigener Leistungen. Der Secret Key ist nur nötig, wenn
         der Shop ein eigenes Stripe-Konto nutzen soll — sonst gilt das zentrale
         Konto unter Einstellungen → Zahlungen (Stripe). Das Webhook-Secret ist
         kein Nice-to-have: fehlt es, weist der Webhook <strong>jede</strong>{" "}
         Anfrage ab, statt irgendeinen POST als Zahlung zu akzeptieren.
-      </div>
+      </Alert>
 
       <div className="tds-field-row">
         <label>
-          Secret Key, optional <em>({hint(stripeKeyState)})</em>
+          Secret Key, optional <em>({secretHint(settings.get("stripe_secret_key"))})</em>
           <input
             className="field-boxed"
             type="password"
@@ -271,7 +202,7 @@ export default function ShopSettings() {
           />
         </label>
         <label>
-          Webhook-Secret <em>({hint(stripeHookState)})</em>
+          Webhook-Secret <em>({secretHint(settings.get("stripe_webhook_secret"))})</em>
           <input
             className="field-boxed"
             type="password"
@@ -284,14 +215,14 @@ export default function ShopSettings() {
       </div>
 
       <h3>PayPal</h3>
-      <div className="tds-alert tds-alert--info">
+      <Alert tone="info">
         Direkt über Orders v2, nicht über einen zweiten Dienstleister. Die
         Webhook-ID gehört zu den Zugangsdaten und ist keine Formalität: ohne sie
         lässt sich ein Ereignis nicht prüfen, und eine Zahlungsart, die eine
         Zahlung starten, aber nie bestätigen kann, wird deshalb gar nicht erst
         angeboten. Webhook-Adresse:{" "}
         <code>/shop/payment/paypal/webhook</code>
-      </div>
+      </Alert>
 
       <div className="tds-field-row">
         <label>
@@ -304,7 +235,7 @@ export default function ShopSettings() {
           />
         </label>
         <label>
-          Secret <em>({hint(ppSecretState)})</em>
+          Secret <em>({secretHint(settings.get("paypal_secret"))})</em>
           <input
             className="field-boxed"
             type="password"
@@ -337,13 +268,13 @@ export default function ShopSettings() {
       </div>
 
       <h3>Wero</h3>
-      <div className="tds-alert tds-alert--warning">
+      <Alert tone="warning">
         Noch nicht angeschlossen. Wero läuft über einen Zahlungsdienstleister,
         und solange hier keiner eingetragen ist, erscheint die Zahlungsart in
         der Kasse überhaupt nicht — sie lässt sich also nicht versehentlich
         anbieten. Was zum Fertigstellen fehlt, steht in{" "}
         <code>docs/wero-adapter.md</code>.
-      </div>
+      </Alert>
 
       <div className="tds-field-row">
         <label>
@@ -356,7 +287,7 @@ export default function ShopSettings() {
           />
         </label>
         <label>
-          API-Schlüssel <em>({hint(weroKeyState)})</em>
+          API-Schlüssel <em>({secretHint(settings.get("wero_api_key"))})</em>
           <input
             className="field-boxed"
             type="password"
@@ -370,7 +301,7 @@ export default function ShopSettings() {
 
       <div className="tds-field-row">
         <label>
-          Webhook-Secret <em>({hint(weroHookState)})</em>
+          Webhook-Secret <em>({secretHint(settings.get("wero_webhook_secret"))})</em>
           <input
             className="field-boxed"
             type="password"
@@ -383,14 +314,14 @@ export default function ShopSettings() {
       </div>
 
       <h3>Versand</h3>
-      <div className="tds-alert tds-alert--info">
+      <Alert tone="info">
         Gilt nur für Bestellungen mit körperlicher Ware; ein Warenkorb aus
         reinen Leistungen wird nie mit Versand belastet und fragt auch keine
         Lieferanschrift ab. Beträge in <strong>Cent</strong>, netto — die Steuer
         kommt oben drauf, und zwar mit dem Satz der gelieferten Ware, bei
         gemischten Sätzen anteilig aufgeteilt (Abschn. 3.10 UStAE). 0 als
         Pauschale heißt versandkostenfrei.
-      </div>
+      </Alert>
 
       <div className="tds-field-row">
         <label>
@@ -416,7 +347,7 @@ export default function ShopSettings() {
       </div>
 
       <div className="tds-toolbar">
-        <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={busy} aria-busy={busy}>
+        <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={settings.busy} aria-busy={settings.busy}>
           Speichern
         </button>
       </div>

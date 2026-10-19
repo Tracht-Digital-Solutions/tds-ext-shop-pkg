@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 
-import { apiFetch } from "@tracht-digital-solutions/tds-shared/api";
-import { Spinner } from "@tracht-digital-solutions/tds-shared/components";
+import { apiFetch, sendJson } from "@tracht-digital-solutions/tds-shared/api";
+import { Alert, Spinner } from "@tracht-digital-solutions/tds-shared/components";
 import { toast } from "@tracht-digital-solutions/tds-shared/toast";
 
 import PairEditor, { parsePairs, type Pair } from "./PairEditor.tsx";
@@ -92,11 +92,7 @@ export default function CategoryManager() {
     if (!draft) return;
     setSaving(slug);
     try {
-      const res = await apiFetch(`/shop/categories/${slug}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
-      });
+      const res = await sendJson(`/shop/categories/${slug}`, "PUT", draft);
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         toast.danger(json.error ?? `Speichern fehlgeschlagen (HTTP ${res.status})`);
@@ -126,7 +122,7 @@ export default function CategoryManager() {
       </p>
 
       {error ? (
-        <div className="tds-alert tds-alert--danger">Kategorien konnten nicht geladen werden: {error}</div>
+        <Alert>Kategorien konnten nicht geladen werden: {error}</Alert>
       ) : null}
 
       {categories.length === 0 ? (

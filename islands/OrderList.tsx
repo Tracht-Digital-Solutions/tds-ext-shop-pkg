@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { apiFetch } from "@tracht-digital-solutions/tds-shared/api";
-import { Spinner } from "@tracht-digital-solutions/tds-shared/components";
+import { apiFetch, sendJson } from "@tracht-digital-solutions/tds-shared/api";
+import { Alert, Spinner } from "@tracht-digital-solutions/tds-shared/components";
 import { resolveChipVariant } from "@tracht-digital-solutions/tds-shared/design";
 import { toast } from "@tracht-digital-solutions/tds-shared/toast";
+import { formatCents, formatDateTime } from "@tracht-digital-solutions/tds-shared/format";
 
 interface Order {
   id: number;
@@ -45,19 +46,10 @@ const STATUS_LABEL: Record<Order["status"], string> = {
   failed: "Fehlgeschlagen",
 };
 
-const euro = (cents: number, currency: string) => {
-  try {
-    return new Intl.NumberFormat("de-DE", { style: "currency", currency }).format(cents / 100);
-  } catch {
-    return `${(cents / 100).toFixed(2)} ${currency}`;
-  }
-};
+const euro = (cents: number, currency: string) => formatCents(cents, { currency });
 
-const date = (iso: string | null) => {
-  if (!iso) return "—";
-  const t = Date.parse(iso.replace(" ", "T") + (iso.endsWith("Z") ? "" : "Z"));
-  return Number.isNaN(t) ? "—" : new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(t);
-};
+/** Order timestamps are written in UTC (`gmdate`), so a zone-less value is read as UTC. */
+const date = (iso: string | null) => formatDateTime(iso, { utc: true });
 
 /**
  * Orders for TDS's own digital service packages.
@@ -99,11 +91,7 @@ export default function OrderList() {
   const fulfil = async (order: Order) => {
     setBusyId(order.id);
     try {
-      const res = await apiFetch(`/shop/orders/${order.id}/fulfil`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
+      const res = await sendJson(`/shop/orders/${order.id}/fulfil`, "POST", {});
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast.success(`${order.order_no} als erbracht markiert.`);
       await load();
@@ -121,17 +109,17 @@ export default function OrderList() {
   return (
     <>
       {error ? (
-        <div className="tds-alert tds-alert--danger">
+        <Alert>
           Bestellungen konnten nicht geladen werden: {error}
-        </div>
+        </Alert>
       ) : null}
 
       {open > 0 ? (
-        <div className="tds-alert tds-alert--warning">
+        <Alert tone="warning">
           {open} bezahlte {open === 1 ? "Bestellung wartet" : "Bestellungen warten"} auf
           Erbringung. Diese Produkte sind Leistungen — es wird nichts automatisch
           ausgeliefert.
-        </div>
+        </Alert>
       ) : null}
 
       {orders.length === 0 ? (

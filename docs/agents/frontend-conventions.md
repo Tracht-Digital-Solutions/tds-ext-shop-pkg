@@ -9,17 +9,20 @@ The host renders this markup inside the `panel` surface, so geometry is already 
 | Slot | Class |
 |---|---|
 | page shell | `tds-page` + `tds-page__head` > `h1.tds-page__title` (+ `tds-page__lede`) |
-| dashboard widget | `article.tds-widget` > `h3.tds-widget__title`, figure `tds-widget__metric` |
+| dashboard widget | `article.tds-widget` > `h3.tds-widget__title`; a count body is `<SummaryMetric endpoint>` (`—` on failure) |
 | settings slot | `div.tds-settings-section__body` |
 | record list | `ul.tds-list` > `li.tds-list__row` |
 | card / table / empty | `tds-card` · `tds-table` · `tds-empty` |
 | button | `btn` + `btn-primary` / `-accent` / `-ghost` / `-danger` (**both** classes) |
-| inline label | `chip` + `chip--{neutral,success,warning,danger,info,cat-*}` |
-| block message | `tds-alert` (+ `--success` / `--warning` / `--danger`) |
+| inline label | `chip` + `chip--{neutral,success,warning,danger,info,cat-*}`; a status is `<StatusChip status map>` |
+| block message | `<Alert tone>` from `tds-shared/components` (renders `tds-alert`); never hand-written |
 | label + control | `tds-field-row` · toggle row `tds-toggle-row` |
 | message thread | `tds-thread` > `tds-thread__item--own` / `--other` |
 | loading | `<Spinner />` from `tds-shared/components` |
 | destructive confirm | `<ConfirmDialog />` from `tds-shared/components`, **never `window.confirm()`** |
+| tabs / choice | `<Tabs>` + `<TabPanel>` · `<Segmented>` from `tds-shared/components` |
+| dates, money, sizes | `tds-shared/format` (`formatDate`, `formatCents`, `parseEuros`, `formatBytes`) |
+| copy, download, upload | `tds-shared/clipboard` · `/download` · `<FileDropZone>` from `/dropzone` |
 
 Internal layout: `.tds-stack` (+ `--tight` / `--loose`) for vertical stacks, `.tds-row`
 (+ `--between`) for wrapping rows, `.tds-compose` (+ `__actions`) for a reply box,
@@ -52,6 +55,9 @@ host) and routes 401s through the host's confirm-against-`/me` backstop.
 
 A mocked-fetch test can't catch this regression, because a relative path satisfies
 every behavioural assertion. Keep at least one assertion per suite on the **absolute host**.
+
+A JSON body goes through `sendJson(path, method, body)`; failure text through
+`describeFailure(res | null, action)` from the same module. Never alias `const api = apiFetch`.
 
 ## Mutation outcomes: toasts
 

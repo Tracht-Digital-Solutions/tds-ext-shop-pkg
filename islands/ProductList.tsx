@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { apiFetch } from "@tracht-digital-solutions/tds-shared/api";
-import { ConfirmDialog, Spinner } from "@tracht-digital-solutions/tds-shared/components";
+import { apiFetch, sendJson } from "@tracht-digital-solutions/tds-shared/api";
+import { Alert, ConfirmDialog, Spinner } from "@tracht-digital-solutions/tds-shared/components";
 import { Presence } from "@tracht-digital-solutions/tds-shared/motion/react";
 import { resolveChipVariant } from "@tracht-digital-solutions/tds-shared/design";
 import { toast } from "@tracht-digital-solutions/tds-shared/toast";
@@ -309,11 +309,7 @@ export default function ProductList() {
     if (ids.length === 0) return;
     setPublishing("bulk");
     try {
-      const res = await apiFetch("/shop/products/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
-      });
+      const res = await sendJson("/shop/products/publish", "POST", { ids });
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
         published?: number[];
@@ -364,9 +360,9 @@ export default function ProductList() {
   return (
     <>
       {error ? (
-        <div className="tds-alert tds-alert--danger">
+        <Alert>
           Produkte konnten nicht geladen werden: {error}
-        </div>
+        </Alert>
       ) : null}
 
       {/* "Bearbeiten" in the table below swaps what this form edits. A
