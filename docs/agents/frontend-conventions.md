@@ -94,8 +94,8 @@ so it can't be double-submitted. Grep `method: "DELETE"` when you add one.
 `npm run lint:primitives` enforces the class rules, including a `<table>` without
 `tds-table`, a flex/grid table cell and a `btn-*` variant that doesn't exist in tds-shared.
 It is a **regex scan**, so a tag name written inside a comment counts as markup; name
-elements in prose. The script is a copy of the seed in
-`tds-ext-template-pkg`; change it there and propagate (see
+elements in prose. The script is tds-shared's
+`tds-lint-primitives` bin (since 0.59); change it there, never in a local copy (see
 `tds-ext-template-pkg/docs/agents/lint-primitives.md`).
 
 ## Routes inside the host
