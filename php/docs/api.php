@@ -63,7 +63,8 @@ return [
         'pattern' => '/content/shop/{slug:[a-z0-9-]+}',
         'summary' => 'Ein Produkt mit Text und Angeboten',
         'description' => 'Der Slug ist sprachabhängig: DE und EN dürfen verschiedene Slugs '
-            . 'haben, weil die Paarung über `product_id` läuft und nicht über Slug-Spiegelung.',
+            . 'haben, weil die Paarung über `product_id` läuft und nicht über Slug-Spiegelung. '
+            . '`alternateSlug` nennt den Slug in der anderen Sprache (oder `null`).',
         'auth' => 'public',
         'tag' => 'Katalog',
         'params' => [

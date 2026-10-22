@@ -762,6 +762,7 @@ final class ProductRepository
         $offers = $this->offersFor($ids);
         $covers = $this->coversFor($ids);
         $names = $this->categoryNames();
+        $twins = $this->alternateSlugs($ids, $lang === 'en' ? 'de' : 'en');
 
         $out = [];
         foreach ($rows as $row) {
@@ -808,6 +809,11 @@ final class ProductRepository
                 'summary' => self::nullableText($row['summary'] ?? null, 400),
                 'machineTranslated' => (bool) ($row['machine_translated'] ?? false),
                 'publishedAt' => self::isoUtc($row['published_at'] ?? null),
+                // The same product's slug in the other language, or null when it
+                // has no translation there. Slugs may differ per language, so the
+                // shop cannot derive this — it pairs hreflang, sitemap and
+                // llms.txt on it. Same product row, so the same publish gate.
+                'alternateSlug' => $twins[$id] ?? null,
                 'offers' => $offersForProduct,
             ];
         }
@@ -839,6 +845,31 @@ final class ProductRepository
         } catch (\Throwable) {
             return [];
         }
+    }
+
+    /**
+     * Each product's slug in `$lang`, for the products that have that translation.
+     *
+     * @param  list<int> $productIds
+     * @return array<int, string>
+     */
+    public function alternateSlugs(array $productIds, string $lang): array
+    {
+        if ($productIds === []) {
+            return [];
+        }
+        $in = implode(',', array_fill(0, count($productIds), '?'));
+        $stmt = $this->pdo->prepare(
+            'SELECT product_id, slug FROM shop_product_translation'
+            . " WHERE lang = ? AND slug <> '' AND product_id IN ($in)",
+        );
+        $stmt->execute([$lang, ...$productIds]);
+
+        $out = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $out[(int) $row['product_id']] = (string) $row['slug'];
+        }
+        return $out;
     }
 
     /**

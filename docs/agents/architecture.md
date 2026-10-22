@@ -43,7 +43,9 @@ for itself is one they eventually forget.
 `shop_product` + `shop_product_translation`, **not** the blog's row-per-language. ASIN,
 network, price, availability and retrieval time are language-neutral; duplicating them per
 language lets an interrupted sync leave DE at 249 € and EN at 259 €. DE and EN slugs may differ
-freely, because the pair joins on `product_id`. Don't "fix" this to match the blog.
+freely, because the pair joins on `product_id`. Don't "fix" this to match the blog. Public reads carry
+`alternateSlug` (the other language's slug or `null`) so the shop can pair hreflang without
+guessing.
 
 ### 4. `editorial_status` gates indexing
 
