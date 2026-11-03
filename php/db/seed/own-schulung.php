@@ -12,7 +12,6 @@ return [
     [
         'category' => 'schulung', 'tags' => 'website,pflege,einweisung', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Einweisung in die Pflege der eigenen Website',
-        'prompt' => 'a person at a laptop editing a website text block with a friendly coach pointing at the screen',
         'de' => [
             'slug' => 'website-selbst-pflegen-einweisung',
             'title' => 'Website selbst pflegen: Einweisung',
@@ -101,7 +100,6 @@ return [
     [
         'category' => 'schulung', 'tags' => 'ki,workshop,chatgpt', 'hours' => 3, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Workshop zu KI im Büroalltag',
-        'prompt' => 'a small office team around a screen with an AI chat assistant drafting a letter, light bulbs above',
         'de' => [
             'slug' => 'ki-im-buero-workshop',
             'title' => 'KI im Büro: Praxis-Workshop',
@@ -192,7 +190,6 @@ return [
     [
         'category' => 'schulung', 'tags' => 'it-sicherheit,phishing,schulung', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'IT-Sicherheitsschulung für Mitarbeitende',
-        'prompt' => 'a fishing hook pulling at an email envelope, a team member spotting it with a shield badge',
         'de' => [
             'slug' => 'it-sicherheit-fuer-mitarbeitende',
             'title' => 'IT-Sicherheit für Mitarbeitende',
@@ -283,7 +280,6 @@ return [
     [
         'category' => 'schulung', 'tags' => 'google-unternehmensprofil,bewertungen', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Schulung zur Pflege des Google-Unternehmensprofils',
-        'prompt' => 'a phone showing a business listing with stars, photos and a posts feed, a hand adding a new photo',
         'de' => [
             'slug' => 'google-unternehmensprofil-selbst-pflegen',
             'title' => 'Google-Unternehmensprofil selbst pflegen',
@@ -372,7 +368,6 @@ return [
     [
         'category' => 'schulung', 'tags' => 'social-media,instagram,marketing', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Social-Media-Grundlagen für kleine Betriebe',
-        'prompt' => 'a phone with a simple content calendar and a few post tiles, a shop owner planning with a coffee',
         'de' => [
             'slug' => 'social-media-grundlagen-fuer-betriebe',
             'title' => 'Social-Media-Grundlagen für Betriebe',
@@ -463,7 +458,6 @@ return [
     [
         'category' => 'schulung', 'tags' => 'outlook,e-mail,organisation', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Aufgeräumtes E-Mail-Postfach',
-        'prompt' => 'an overflowing inbox turning into a tidy one with folders, rules and an empty inbox badge',
         'de' => [
             'slug' => 'e-mail-postfach-im-griff',
             'title' => 'E-Mail-Postfach im Griff',
@@ -552,7 +546,6 @@ return [
     [
         'category' => 'schulung', 'tags' => 'microsoft-365,teams,einfuehrung', 'hours' => 3, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Einführung in Microsoft Teams für ein Team',
-        'prompt' => 'a team video call grid with shared files and chat bubbles, a trainer highlighting a channel list',
         'de' => [
             'slug' => 'microsoft-teams-einfuehrung',
             'title' => 'Microsoft 365 und Teams: Einführung',

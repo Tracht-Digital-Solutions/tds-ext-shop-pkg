@@ -11,7 +11,6 @@ return [
     [
         'category' => 'e-mail-domain', 'tags' => 'domain,e-mail', 'hours' => 3, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Eigene Domain mit E-Mail-Adressen',
-        'prompt' => 'a domain name tag connected to a few neat email envelopes with an @ symbol',
         'de' => [
             'slug' => 'domain-und-e-mail-einrichten',
             'title' => 'Domain und E-Mail einrichten',
@@ -102,7 +101,6 @@ return [
     [
         'category' => 'e-mail-domain', 'tags' => 'microsoft-365,office', 'hours' => 6, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Microsoft 365 für ein kleines Team',
-        'prompt' => 'a small team of five avatars connected to a cloud with mail, calendar and document icons',
         'de' => [
             'slug' => 'microsoft-365-einrichten',
             'title' => 'Microsoft 365 einrichten',
@@ -193,7 +191,6 @@ return [
     [
         'category' => 'e-mail-domain', 'tags' => 'google-workspace,gmail', 'hours' => 6, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Google Workspace für ein kleines Team',
-        'prompt' => 'a small team connected to a bright cloud with colourful mail, calendar, drive and meeting icons',
         'de' => [
             'slug' => 'google-workspace-einrichten',
             'title' => 'Google Workspace einrichten',
@@ -284,7 +281,6 @@ return [
     [
         'category' => 'e-mail-domain', 'tags' => 'spf,dkim,dmarc,zustellung', 'hours' => 3, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'E-Mail mit Echtheitsnachweis',
-        'prompt' => 'an email envelope with a wax seal and three small verification stamps arriving in an inbox, not in spam',
         'de' => [
             'slug' => 'spf-dkim-dmarc-einrichten',
             'title' => 'SPF, DKIM und DMARC einrichten',
@@ -373,7 +369,6 @@ return [
     [
         'category' => 'e-mail-domain', 'tags' => 'e-mail,umzug,migration', 'hours' => 5, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Umzug von Postfächern zu einem neuen Anbieter',
-        'prompt' => 'stacks of email envelopes flowing along a conveyor from an old mailbox to a new one',
         'de' => [
             'slug' => 'e-mail-umzug',
             'title' => 'E-Mail-Umzug zu neuem Anbieter',
@@ -464,7 +459,6 @@ return [
     [
         'category' => 'e-mail-domain', 'tags' => 'signatur,e-mail', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Einheitliche E-Mail-Signatur',
-        'prompt' => 'several identical elegant email signature cards with logo and contact lines, stacked neatly',
         'de' => [
             'slug' => 'einheitliche-e-mail-signaturen',
             'title' => 'Einheitliche E-Mail-Signaturen',
@@ -553,7 +547,6 @@ return [
     [
         'category' => 'e-mail-domain', 'tags' => 'domain,umzug', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Domain-Umzug zu einem neuen Registrar',
-        'prompt' => 'a domain name tag carried across a bridge from one building to another, DNS records following',
         'de' => [
             'slug' => 'domain-umzug',
             'title' => 'Domain-Umzug zu neuem Anbieter',

@@ -11,7 +11,6 @@ return [
     [
         'category' => 'wartung-betrieb', 'tags' => 'wartung,updates', 'hours' => 3, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Website-Wartung für drei Monate',
-        'prompt' => 'a website on a workbench with small tools, a calendar showing three months ticked off',
         'de' => [
             'slug' => 'website-wartung-3-monate',
             'title' => 'Website-Wartung für 3 Monate',
@@ -102,7 +101,6 @@ return [
     [
         'category' => 'wartung-betrieb', 'tags' => 'wartung,updates,jahrespaket', 'hours' => 10, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Website-Wartung für ein Jahr',
-        'prompt' => 'a website protected under a glass dome with a full year calendar ring around it',
         'de' => [
             'slug' => 'website-wartung-12-monate',
             'title' => 'Website-Wartung für 12 Monate',
@@ -193,7 +191,6 @@ return [
     [
         'category' => 'wartung-betrieb', 'tags' => 'wordpress,sicherheit,update', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Einmaliges Sicherheits-Update für WordPress',
-        'prompt' => 'a WordPress-like dashboard with an update button pressed and a padlock clicking shut',
         'de' => [
             'slug' => 'sicherheits-update-wordpress',
             'title' => 'Sicherheits-Update für WordPress',
@@ -284,7 +281,6 @@ return [
     [
         'category' => 'wartung-betrieb', 'tags' => 'backup,sicherung', 'hours' => 3, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Automatische Website-Sicherung',
-        'prompt' => 'a website duplicated into a safe vault with circular arrows, a restore button beside it',
         'de' => [
             'slug' => 'backup-einrichten-und-testen',
             'title' => 'Website-Backup einrichten und testen',
@@ -375,7 +371,6 @@ return [
     [
         'category' => 'wartung-betrieb', 'tags' => 'hosting,umzug', 'hours' => 6, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Umzug einer Website zu einem neuen Hoster',
-        'prompt' => 'a website packed in a moving box travelling on an arrow from one server rack to another',
         'de' => [
             'slug' => 'website-umzug-zu-neuem-hoster',
             'title' => 'Website-Umzug zu neuem Hoster',
@@ -466,7 +461,6 @@ return [
     [
         'category' => 'wartung-betrieb', 'tags' => 'hack,malware,notfall', 'hours' => 6, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Bereinigung einer gehackten Website',
-        'prompt' => 'a website being cleaned with a sponge, small bug icons washing away, a shield appearing',
         'de' => [
             'slug' => 'gehackte-website-bereinigen',
             'title' => 'Gehackte Website bereinigen',
@@ -559,7 +553,6 @@ return [
     [
         'category' => 'wartung-betrieb', 'tags' => 'ssl,https', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Website mit HTTPS-Schloss im Browser',
-        'prompt' => 'a browser address bar with a green padlock, mixed-content warnings turning into checkmarks',
         'de' => [
             'slug' => 'https-umstellung',
             'title' => 'HTTPS-Umstellung mit SSL-Zertifikat',

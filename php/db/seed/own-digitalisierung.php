@@ -11,7 +11,6 @@ return [
     [
         'category' => 'digitalisierung', 'tags' => 'formulare,papierlos', 'hours' => 5, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Online-Formular ersetzt Papierformular',
-        'prompt' => 'a paper form folding itself into a glowing tablet form, data flowing into a neat table',
         'de' => [
             'slug' => 'online-formular-statt-papier',
             'title' => 'Online-Formular statt Papier',
@@ -102,7 +101,6 @@ return [
     [
         'category' => 'digitalisierung', 'tags' => 'rechnungen,buchhaltung,lexware', 'hours' => 5, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Digitale Rechnungen mit einer Buchhaltungssoftware',
-        'prompt' => 'invoices flying from a laptop into neat digital folders, a calculator and a check mark',
         'de' => [
             'slug' => 'rechnungen-digital-schreiben',
             'title' => 'Rechnungen digital schreiben',
@@ -195,7 +193,6 @@ return [
     [
         'category' => 'digitalisierung', 'tags' => 'ablage,dokumente,cloud', 'hours' => 6, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Digitale Ablagestruktur mit Ordnern',
-        'prompt' => 'a messy pile of papers transforming into a clean tree of labelled digital folders',
         'de' => [
             'slug' => 'digitale-ablage-einrichten',
             'title' => 'Digitale Ablage einrichten',
@@ -286,7 +283,6 @@ return [
     [
         'category' => 'digitalisierung', 'tags' => 'tickets,anfragen,automatisierung', 'hours' => 4, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Kontaktanfragen werden automatisch zu Tickets',
-        'prompt' => 'website contact messages dropping into a tidy kanban board as numbered ticket cards',
         'de' => [
             'slug' => 'anfragen-automatisch-als-ticket',
             'title' => 'Anfragen automatisch als Ticket',
@@ -377,7 +373,6 @@ return [
     [
         'category' => 'digitalisierung', 'tags' => 'crm,kundendaten', 'hours' => 8, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Kundendaten an einem Ort zusammengeführt',
-        'prompt' => 'scattered contact cards, spreadsheets and sticky notes merging into one clean customer database',
         'de' => [
             'slug' => 'kundendaten-zusammenfuehren',
             'title' => 'Kundendaten zusammenführen (CRM-Start)',
@@ -470,7 +465,6 @@ return [
     [
         'category' => 'digitalisierung', 'tags' => 'automatisierung,zapier,make', 'hours' => 5, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Automatisierter Arbeitsablauf zwischen Programmen',
-        'prompt' => 'three app icons connected by animated pipes passing small data packets, a play button starting the flow',
         'de' => [
             'slug' => 'einen-ablauf-automatisieren',
             'title' => 'Einen Arbeitsablauf automatisieren',
@@ -561,7 +555,6 @@ return [
     [
         'category' => 'digitalisierung', 'tags' => 'passwortmanager,sicherheit,team', 'hours' => 4, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Passwortmanager für ein Team',
-        'prompt' => 'a secure digital vault with key icons shared between three team avatars, sticky notes with passwords disappearing',
         'de' => [
             'slug' => 'passwortmanager-fuer-das-team',
             'title' => 'Passwortmanager für das Team',

@@ -13,7 +13,6 @@ return [
     [
         'category' => 'recht-datenschutz', 'tags' => 'impressum,datenschutz', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Impressum und Datenschutzerklärung auf einer Website',
-        'prompt' => 'two neat document pages labelled with a paragraph sign and a shield, linked from a website footer',
         'de' => [
             'slug' => 'impressum-und-datenschutz-einbinden',
             'title' => 'Impressum und Datenschutzerklärung einbinden',
@@ -105,7 +104,6 @@ return [
     [
         'category' => 'recht-datenschutz', 'tags' => 'cookie-banner,consent', 'hours' => 3, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Cookie-Banner mit gleichwertigen Knöpfen',
-        'prompt' => 'a friendly cookie consent panel with two equal buttons, scripts waiting behind a small gate',
         'de' => [
             'slug' => 'cookie-banner-einrichten',
             'title' => 'Cookie-Banner einrichten',
@@ -196,7 +194,6 @@ return [
     [
         'category' => 'recht-datenschutz', 'tags' => 'barrierefreiheit,bfsg,check', 'hours' => 6, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Barrierefreiheits-Prüfung einer Website',
-        'prompt' => 'a website checked with a magnifier and accessibility symbols: keyboard, contrast, screen reader',
         'de' => [
             'slug' => 'barrierefreiheits-check-bfsg',
             'title' => 'Barrierefreiheits-Check (BFSG)',
@@ -285,7 +282,6 @@ return [
     [
         'category' => 'recht-datenschutz', 'tags' => 'barrierefreiheit,umsetzung', 'hours' => 12, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Barrierefreie Website mit gutem Kontrast',
-        'prompt' => 'a web page with bold readable text, strong contrast and a visible keyboard focus ring, an accessibility icon',
         'de' => [
             'slug' => 'barrierefreiheit-verbessern',
             'title' => 'Barrierefreiheit verbessern',
@@ -378,7 +374,6 @@ return [
     [
         'category' => 'recht-datenschutz', 'tags' => 'google-fonts,datenschutz', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Schriften lokal auf dem eigenen Server',
-        'prompt' => 'letters of a font moving from a distant cloud into a small local server box',
         'de' => [
             'slug' => 'google-fonts-lokal-einbinden',
             'title' => 'Google Fonts lokal einbinden',
@@ -467,7 +462,6 @@ return [
     [
         'category' => 'recht-datenschutz', 'tags' => 'datenschutz,dienste,scan', 'hours' => 3, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Prüfung externer Dienste auf einer Website',
-        'prompt' => 'a website with thin lines leading out to small third-party service icons, each line inspected by a magnifier',
         'de' => [
             'slug' => 'externe-dienste-pruefen',
             'title' => 'Externe Dienste prüfen',
@@ -556,7 +550,6 @@ return [
     [
         'category' => 'recht-datenschutz', 'tags' => 'barrierefreiheit,erklaerung', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Erklärung zur Barrierefreiheit auf einer Website',
-        'prompt' => 'a document page with an accessibility symbol and a feedback envelope, linked from a website footer',
         'de' => [
             'slug' => 'erklaerung-zur-barrierefreiheit',
             'title' => 'Erklärung zur Barrierefreiheit einbinden',

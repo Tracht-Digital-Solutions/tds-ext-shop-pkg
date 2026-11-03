@@ -4,7 +4,6 @@ declare(strict_types=1);
 /**
  * Own products, category `webauftritt`. Rate: Webauftritt, 65 € net per hour.
  * Price = rate × hours (`CatalogueSeed::netCents()`), shown gross incl. 19 % VAT.
- * `prompt` is the DALL-E subject for the cover (docs/product-image-prompts.md).
  */
 $image = 'https://tracht-digital.de/images/services/04-webauftritt-800.webp';
 $rate = 6500;
@@ -13,7 +12,6 @@ return [
     [
         'category' => 'webauftritt', 'tags' => 'website,onepager', 'hours' => 16, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Onepager-Website auf Laptop und Smartphone',
-        'prompt' => 'a single long web page scrolling on a laptop and a phone side by side, sections stacked like cards',
         'de' => [
             'slug' => 'onepager-website',
             'title' => 'Onepager-Website',
@@ -106,7 +104,6 @@ return [
     [
         'category' => 'webauftritt', 'tags' => 'website,firmenwebsite', 'hours' => 32, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Firmenwebsite mit mehreren Unterseiten',
-        'prompt' => 'a small company website with five page tabs fanned out like paper sheets above a laptop',
         'de' => [
             'slug' => 'firmenwebsite-bis-5-seiten',
             'title' => 'Firmenwebsite bis 5 Seiten',
@@ -201,7 +198,6 @@ return [
     [
         'category' => 'webauftritt', 'tags' => 'landingpage,kampagne', 'hours' => 12, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Landingpage mit einem klaren Aufruf',
-        'prompt' => 'a single focused landing page with one big call-to-action button glowing softly',
         'de' => [
             'slug' => 'landingpage-fuer-ein-angebot',
             'title' => 'Landingpage für ein Angebot',
@@ -292,7 +288,6 @@ return [
     [
         'category' => 'webauftritt', 'tags' => 'relaunch,konzept', 'hours' => 8, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Konzept für den Relaunch einer Website',
-        'prompt' => 'an old website wireframe transforming into a clean new wireframe, with a sitemap diagram between them',
         'de' => [
             'slug' => 'relaunch-konzept',
             'title' => 'Relaunch-Konzept für Ihre Website',
@@ -383,7 +378,6 @@ return [
     [
         'category' => 'webauftritt', 'tags' => 'mehrsprachig,englisch', 'hours' => 10, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Website mit Sprachumschalter Deutsch und Englisch',
-        'prompt' => 'a website with a language switch toggling between two speech bubbles, one German flag colours and one British',
         'de' => [
             'slug' => 'zweite-sprache-fuer-ihre-website',
             'title' => 'Zweite Sprache für Ihre Website',
@@ -474,7 +468,6 @@ return [
     [
         'category' => 'webauftritt', 'tags' => 'kontaktformular,spamschutz', 'hours' => 3, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Kontaktformular mit Schutz vor Spam',
-        'prompt' => 'a clean contact form with a small shield icon blocking a swarm of tiny spam envelopes',
         'de' => [
             'slug' => 'kontaktformular-mit-spamschutz',
             'title' => 'Kontaktformular mit Spamschutz',
@@ -563,7 +556,6 @@ return [
     [
         'category' => 'webauftritt', 'tags' => 'terminbuchung,kalender', 'hours' => 4, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Online-Terminbuchung auf einer Website',
-        'prompt' => 'a website calendar widget with open time slots, a hand tapping one slot on a phone',
         'de' => [
             'slug' => 'online-terminbuchung-einbinden',
             'title' => 'Online-Terminbuchung einbinden',
@@ -656,7 +648,6 @@ return [
     [
         'category' => 'webauftritt', 'tags' => 'referenzen,galerie', 'hours' => 4, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Referenzseite mit Projektbildern',
-        'prompt' => 'a portfolio grid of project photos arranged neatly on a web page, one tile enlarged',
         'de' => [
             'slug' => 'referenzseite-anlegen',
             'title' => 'Referenzseite anlegen',

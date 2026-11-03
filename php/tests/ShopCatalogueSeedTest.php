@@ -146,7 +146,6 @@ final class ShopCatalogueSeedTest extends TestCase
             self::assertGreaterThan(0, $p['hours'], $p['de']['slug']);
             self::assertContains($p['fulfilment'], ['project', 'ticket', 'manual'], $p['de']['slug']);
             self::assertStringStartsWith('https://', $p['image'], $p['de']['slug']);
-            self::assertNotSame('', trim($p['prompt'] ?? ''), "{$p['de']['slug']}: image prompt");
             // Shown gross; the body must not claim "zuzüglich".
             self::assertStringNotContainsString('zuzüglich', $p['de']['body'], $p['de']['slug']);
             self::assertStringContainsString('inklusive 19 %', $p['de']['body'], $p['de']['slug']);

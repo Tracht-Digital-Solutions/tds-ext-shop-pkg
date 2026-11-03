@@ -11,7 +11,6 @@ return [
     [
         'category' => 'seo-sichtbarkeit', 'tags' => 'seo,keywords', 'hours' => 5, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Keyword-Plan mit Suchbegriffen und Seiten',
-        'prompt' => 'a magnifying glass over a mind map of search terms connected to web page icons',
         'de' => [
             'slug' => 'keyword-plan-fuer-ihre-leistungen',
             'title' => 'Keyword-Plan für Ihre Leistungen',
@@ -102,7 +101,6 @@ return [
     [
         'category' => 'seo-sichtbarkeit', 'tags' => 'local-seo,verzeichnisse', 'hours' => 4, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Einträge eines Betriebs in Branchenverzeichnissen',
-        'prompt' => 'a shop front with map pins and several directory listing cards fanning out from it',
         'de' => [
             'slug' => 'eintraege-in-branchenverzeichnissen',
             'title' => 'Einträge in Branchenverzeichnissen',
@@ -191,7 +189,6 @@ return [
     [
         'category' => 'seo-sichtbarkeit', 'tags' => 'geo,ki-suche,llms', 'hours' => 6, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Website als Quelle in einer KI-Antwort',
-        'prompt' => 'a chat bubble from an AI assistant quoting a small website card as its source, soft glowing link line',
         'de' => [
             'slug' => 'ki-sichtbarkeit-geo-verbessern',
             'title' => 'KI-Sichtbarkeit (GEO) verbessern',
@@ -284,7 +281,6 @@ return [
     [
         'category' => 'seo-sichtbarkeit', 'tags' => 'technisches-seo,sitemap', 'hours' => 6, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Technische SEO-Prüfung einer Website',
-        'prompt' => 'a website blueprint with gears, a sitemap tree and green check marks on technical items',
         'de' => [
             'slug' => 'technische-seo-grundlagen',
             'title' => 'Technische SEO-Grundlagen umsetzen',
@@ -375,7 +371,6 @@ return [
     [
         'category' => 'seo-sichtbarkeit', 'tags' => 'schema,strukturierte-daten', 'hours' => 4, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Strukturierte Daten im Code einer Website',
-        'prompt' => 'code brackets wrapping neat labelled data blocks that turn into rich search result cards with stars and FAQs',
         'de' => [
             'slug' => 'strukturierte-daten-einbauen',
             'title' => 'Strukturierte Daten (Schema.org) einbauen',
@@ -465,7 +460,6 @@ return [
     [
         'category' => 'seo-sichtbarkeit', 'tags' => 'ladezeit,core-web-vitals', 'hours' => 6, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Website mit schneller Ladezeit',
-        'prompt' => 'a speedometer needle in the green zone next to a web page loading instantly, motion lines',
         'de' => [
             'slug' => 'ladezeit-optimieren',
             'title' => 'Ladezeit optimieren',
@@ -556,7 +550,6 @@ return [
     [
         'category' => 'seo-sichtbarkeit', 'tags' => 'search-console,google', 'hours' => 2, 'rate_cents' => $rate,
         'fulfilment' => 'project', 'image' => $image, 'alt' => 'Google Search Console mit Diagramm',
-        'prompt' => 'a dashboard with a rising line chart and a search bar, a key handing over access',
         'de' => [
             'slug' => 'google-search-console-einrichten',
             'title' => 'Google Search Console einrichten',
